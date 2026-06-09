@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+
+# env files (database connection strings, API keys, etc.)
+.env
+.env.local
+.env.*.local
+
+# Prisma generated client
+packages/db/generated/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# debug
+*.log
