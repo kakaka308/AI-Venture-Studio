@@ -1,6 +1,5 @@
 import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@auth/prisma-adapter";
 import { PrismaClient } from "@ai-venture/db";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
@@ -10,8 +9,9 @@ const prisma = new PrismaClient({
 });
 
 // 导出 NextAuth 的核心方法
+// JWT 策略下不需要数据库 adapter —— Session 数据存于 JWT cookie，
+// 用户验证由 CredentialsProvider.authorize() 直接处理
 export const {handlers, auth, signIn, signOut} = NextAuth({
-  adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
   providers: [
     CredentialsProvider({
