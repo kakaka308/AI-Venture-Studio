@@ -1,8 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -10,6 +8,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Account {
@@ -26,7 +25,7 @@ model Account {
   id_token          String? @db.Text
   session_state     String?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation("AccountOnUser", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
@@ -37,7 +36,7 @@ model Session {
   userId      String
   expires     DateTime
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation("SessionOnUser", fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model User {
@@ -47,11 +46,12 @@ model User {
   name     String?
   image    String?
   emailVerified DateTime?
-  projects Project[]
-  sessions Session[]
-  accounts Account[]
-
+  projects Project[] @relation("ProjectOnUser")
+  sessions Session[] @relation("SessionOnUser")
+  accounts Account[] @relation("AccountOnUser")
+  conversations Conversation[] @relation("ConversationOnUser")
 }
+
 model VerificationToken {
   identifier String
   token      String   @unique
@@ -67,5 +67,34 @@ model Project {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User     @relation("ProjectOnUser", fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  title     String   @default("New Conversation")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // 关联用户
+  userId    String
+  user      User     @relation("ConversationOnUser", fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 关联消息
+  messages  Message[]
+  
+  @@index([userId])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  content        String
+  role           String   // "user" | "assistant" | "system"
+  createdAt      DateTime @default(now())
+  
+  // 关联对话
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  @@index([conversationId])
 }
