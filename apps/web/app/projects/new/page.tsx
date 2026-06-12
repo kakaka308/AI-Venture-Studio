@@ -9,6 +9,8 @@ export default function NewProjectPage() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [industry, setIndustry] = useState("");
+  const [targetAudience, setTargetAudience] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -26,7 +28,7 @@ export default function NewProjectPage() {
     const res = await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, description }),
+      body: JSON.stringify({ name, description, industry, targetAudience }),
     });
 
     if (res.ok) {
@@ -64,6 +66,28 @@ export default function NewProjectPage() {
             onChange={(e) => setDescription(e.target.value)}
             className="w-full border p-2 rounded"
             rows={4}
+          />
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium mb-1">行业</label>
+          <input
+            type="text"
+            value={industry}
+            onChange={(e) => setIndustry(e.target.value)}
+            className="w-full border p-2 rounded"
+            placeholder="例如：电商、教育、医疗"
+          />
+        </div>
+
+        <div className="mb-6">
+          <label className="block text-sm font-medium mb-1">目标用户</label>
+          <input
+            type="text"
+            value={targetAudience}
+            onChange={(e) => setTargetAudience(e.target.value)}
+            className="w-full border p-2 rounded"
+            placeholder="描述你的目标用户群体"
           />
         </div>
 

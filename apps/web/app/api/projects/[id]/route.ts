@@ -42,7 +42,7 @@ export async function PUT(
 
   const { id } = await params;
   const body = await request.json();
-  const { name, description } = body;
+  const { name, description, industry, targetAudience } = body;
 
   const project = await prisma.project.findFirst({
     where: { id, userId: session.user.id },
@@ -54,7 +54,7 @@ export async function PUT(
 
   const updated = await prisma.project.update({
     where: { id },
-    data: { name, description },
+    data: { name, description, industry, targetAudience },
   });
 
   return NextResponse.json(updated);

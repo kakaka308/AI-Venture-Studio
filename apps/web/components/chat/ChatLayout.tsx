@@ -2,24 +2,46 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useState, useEffect, useCallback, useRef } from "react";
-import type { UIMessage } from "ai";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import ConversationList, { type Conversation } from "./ConversationList";
 import MessageList from "./MessageList";
 import ChatInput from "./ChatInput";
 
 export default function ChatLayout() {
+  const searchParams = useSearchParams();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [conversationsLoading, setConversationsLoading] = useState(true);
   const [input, setInput] = useState("");
   const conversationIdRef = useRef<string | null>(null);
+  const projectId = useMemo(() => searchParams.get("projectId"), [searchParams]);
+  const [projectName, setProjectName] = useState<string>("");
 
   // Keep ref in sync with state so callbacks can read the latest value
   useEffect(() => {
     conversationIdRef.current = conversationId;
   }, [conversationId]);
+
+  // Load project name from API
+  useEffect(() => {
+    if (!projectId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setProjectName("");
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/projects/${projectId}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.name) setProjectName(data.name);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   // --- Refresh conversations from API ---
   const refreshConversations = useCallback(async () => {
@@ -44,7 +66,7 @@ export default function ChatLayout() {
   } = useChat({
     transport: new DefaultChatTransport({
       api: "/api/chat",
-      body: { conversationId },
+      body: { conversationId, projectId },
     }),
     onFinish: () => {
       refreshConversations();
@@ -221,6 +243,17 @@ export default function ChatLayout() {
             </button>
           )}
           <h1 className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate">
+            {projectId && projectName ? (
+              <span>
+                <span className="text-blue-600">📁 {projectName}</span>
+                <span className="mx-2 text-gray-300">|</span>
+              </span>
+            ) : projectId ? (
+              <span>
+                <span className="text-blue-600">📁 项目 #{projectId.slice(0, 8)}</span>
+                <span className="mx-2 text-gray-300">|</span>
+              </span>
+            ) : null}
             {conversationId
               ? conversations.find((c) => c.id === conversationId)?.title ||
                   "Chat"

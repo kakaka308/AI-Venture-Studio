@@ -61,13 +61,36 @@ model VerificationToken {
 }
 
 model Project {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  userId      String
-  user        User     @relation("ProjectOnUser", fields: [userId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+  industry       String?
+  targetAudience String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  userId         String
+  user           User     @relation("ProjectOnUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  // 项目上下文（一对一）
+  context        ProjectContext?
+}
+
+model ProjectContext {
+  id               String   @id @default(cuid())
+  projectId        String   @unique
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  industry         String?
+  targetAudience   String?
+  problem          String?
+  valueProposition String?
+  competitors      String?
+  stage            String?  @default("idea") // idea | validation | prototype | mvp
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("project_contexts")
 }
 
 model Conversation {

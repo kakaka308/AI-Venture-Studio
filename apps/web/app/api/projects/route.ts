@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { name, description } = body;
+  const { name, description, industry, targetAudience } = body;
 
   if (!name) {
     return NextResponse.json({ error: "项目名称不能为空" }, { status: 400 });
@@ -40,6 +40,8 @@ export async function POST(request: Request) {
     data: {
       name,
       description,
+      industry,
+      targetAudience,
       userId: session.user.id,
     },
   });
