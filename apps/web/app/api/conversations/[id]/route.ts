@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { PrismaClient } from "@ai-venture/db";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { NextRequest, NextResponse } from "next/server";
+import { clearRecentMessages } from "@/lib/memory";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
@@ -60,6 +61,11 @@ export async function DELETE(
   }
 
   await prisma.conversation.delete({ where: { id } });
+
+  // 同步清理 Redis 短期记忆
+  clearRecentMessages(id).catch((err) =>
+    console.error("[Memory] 清理 Redis 失败:", err),
+  );
 
   return NextResponse.json({ success: true });
 }

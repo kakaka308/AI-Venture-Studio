@@ -73,6 +73,9 @@ model Project {
 
   // 项目上下文（一对一）
   context        ProjectContext?
+
+  // 项目长期记忆（一对一）
+  memory         ProjectMemory?
 }
 
 model ProjectContext {
@@ -107,6 +110,20 @@ model Conversation {
   messages  Message[]
   
   @@index([userId])
+}
+
+model ProjectMemory {
+  id        String   @id @default(cuid())
+  projectId String   @unique
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // 项目画像：结构化 JSON 存储 Agent 学到的项目知识
+  portrait  Json     @default("{\"industry\":\"\",\"targetUsers\":\"\",\"businessModel\":\"\",\"keyInsights\":[],\"summary\":\"\"}")
+  // 最后一次从对话中提取学习的时间
+  lastExtractedAt DateTime?
+  updatedAt DateTime @updatedAt
+
+  @@map("project_memories")
 }
 
 model Message {

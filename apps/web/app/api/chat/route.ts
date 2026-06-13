@@ -4,6 +4,13 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { NextRequest } from "next/server";
+import {
+  getRecentMessages,
+  pushRecentMessage,
+  getProjectMemory,
+  formatPortraitAsPrompt,
+  formatRecentAsPrompt,
+} from "@/lib/memory";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
@@ -48,11 +55,19 @@ export async function POST(req: NextRequest) {
         conversationId,
       },
     });
+
+    // ---- 短期记忆：推送用户消息到 Redis ----
+    pushRecentMessage(conversationId, {
+      role: "user",
+      content: lastMessage.content,
+      createdAt: new Date().toISOString(),
+    }).catch((err) => console.error("[Memory] 推送用户消息失败:", err));
   }
 
-  // 5. 构建 system prompt（注入项目上下文）
+  // 5. 构建 system prompt（项目上下文 + 短期记忆 + 长期记忆）
   let systemPrompt = "你是一个专业的创业助手 AI Agent。";
 
+  // 5a. 项目基础信息
   if (projectId) {
     const project = await prisma.project.findFirst({
       where: { id: projectId, userId: session.user.id },
@@ -72,12 +87,40 @@ export async function POST(req: NextRequest) {
       ].filter(Boolean);
 
       if (contextLines.length > 0) {
-        systemPrompt += `\n\n你正在分析的创业项目信息如下：\n${contextLines.join("\n")}\n\n请根据以上项目信息，给出专业、有针对性的建议和分析。如果用户请求你做市场调研、产品设计、技术架构设计、数据库设计、风险分析等，请紧密结合这个项目的具体情况来回答。`;
+        systemPrompt += `\n\n你正在分析的创业项目信息如下：\n${contextLines.join("\n")}`;
       }
+    }
+
+    // 5b. 长期记忆：项目画像
+    const projectMemory = await getProjectMemory(prisma, projectId);
+    if (projectMemory?.portrait) {
+      const portraitText = formatPortraitAsPrompt(projectMemory.portrait);
+      if (portraitText) {
+        systemPrompt += `\n\n## 项目画像（Agent 持续学习）\n${portraitText}\n\n以上是你从历史对话中学到的项目知识，请在回答时利用这些洞察。`;
+        console.log("[Memory] ✓ 长期记忆已注入到 system prompt");
+      } else {
+        console.log("[Memory] 长期记忆为空，跳过注入");
+      }
+    } else {
+      console.log("[Memory] 无长期记忆数据，跳过注入");
     }
   }
 
-  // 6. 调用 AI 模型（流式），完成后保存 AI 回复
+  // 5c. 短期记忆：最近对话历史
+  const recent = await getRecentMessages(conversationId);
+  if (recent.length > 0) {
+    const recentText = formatRecentAsPrompt(recent);
+    if (recentText) {
+      systemPrompt += `\n\n## 最近你与该用户的对话历史\n${recentText}\n\n以上是最近的上下文，请在回答时保持连贯。`;
+      console.log(`[Memory] ✓ 短期记忆已注入 (${recent.length} 条消息)`);
+    }
+  } else {
+    console.log("[Memory] 无短期记忆，跳过注入");
+  }
+
+  systemPrompt += `\n\n请根据以上信息，给出专业、有针对性的建议和分析。如果用户请求你做市场调研、产品设计、技术架构设计、数据库设计、风险分析等，请紧密结合这个项目的具体情况来回答。`;
+
+  // 6. 调用 AI 模型（流式），完成后保存 AI 回复并更新记忆
   const result = streamText({
     model: openai("gpt-4o-mini"),
     messages,
@@ -95,6 +138,15 @@ export async function POST(req: NextRequest) {
           where: { id: conversationId },
           data: { updatedAt: new Date() },
         });
+
+        // ---- 短期记忆：推送 AI 回复到 Redis ----
+        pushRecentMessage(conversationId, {
+          role: "assistant",
+          content: text,
+          createdAt: new Date().toISOString(),
+        }).then(() => {
+          console.log("[Memory] ✓ AI 回复已推送到短期记忆");
+        }).catch((err) => console.error("[Memory] 推送 AI 回复失败:", err));
       } catch (err) {
         console.error("Failed to persist assistant message:", err);
       }
