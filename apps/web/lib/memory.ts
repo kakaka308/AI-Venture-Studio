@@ -1,5 +1,6 @@
 import { getRedis } from "./redis";
-import type { PrismaClient } from "@ai-venture/db";
+import type { PrismaClientType } from "@ai-venture/db";
+import { Prisma } from "@ai-venture/db";
 
 // ============================================================
 //  Short-term memory config
@@ -124,14 +125,14 @@ const DEFAULT_PORTRAIT: ProjectPortrait = {
  * Read project long-term memory from project_memories table
  */
 export async function getProjectMemory(
-  prisma: PrismaClient,
+  prisma: PrismaClientType,
   projectId: string,
 ): Promise<{
   portrait: ProjectPortrait;
   lastExtractedAt: Date | null;
 } | null> {
   try {
-    const memory = await (prisma as any).projectMemory.findUnique({
+    const memory = await prisma.projectMemory.findUnique({
       where: { projectId },
     });
     if (!memory) {
@@ -142,8 +143,8 @@ export async function getProjectMemory(
     }
 
     const portrait =
-      typeof memory.portrait === "object"
-        ? { ...DEFAULT_PORTRAIT, ...(memory.portrait as any) }
+      typeof memory.portrait === "object" && memory.portrait !== null
+        ? { ...DEFAULT_PORTRAIT, ...(memory.portrait as Record<string, unknown>) }
         : DEFAULT_PORTRAIT;
 
     const industry = portrait.industry || "(empty)";
@@ -167,17 +168,17 @@ export async function getProjectMemory(
  * Update/Create project long-term memory
  */
 export async function upsertProjectMemory(
-  prisma: PrismaClient,
+  prisma: PrismaClientType,
   projectId: string,
   updates: Partial<ProjectPortrait>,
 ): Promise<void> {
   try {
-    const existing = await (prisma as any).projectMemory.findUnique({
+    const existing = await prisma.projectMemory.findUnique({
       where: { projectId },
     });
 
     const portrait: ProjectPortrait = existing
-      ? { ...DEFAULT_PORTRAIT, ...(existing.portrait as any) }
+      ? { ...DEFAULT_PORTRAIT, ...(existing.portrait as Record<string, unknown>) }
       : { ...DEFAULT_PORTRAIT };
 
     // Merge updates
@@ -197,14 +198,14 @@ export async function upsertProjectMemory(
       portrait.keyInsights = Array.from(existingInsights);
     }
 
-    await (prisma as any).projectMemory.upsert({
+    await prisma.projectMemory.upsert({
       where: { projectId },
       create: {
         projectId,
-        portrait,
+        portrait: portrait as unknown as Prisma.InputJsonValue,
       },
       update: {
-        portrait,
+        portrait: portrait as unknown as Prisma.InputJsonValue,
       },
     });
 
