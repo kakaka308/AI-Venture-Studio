@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { PrismaClient } from "@ai-venture/db";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { streamText } from "ai";
+import { stepCountIs, streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { NextRequest } from "next/server";
 import {
@@ -11,6 +11,7 @@ import {
   formatPortraitAsPrompt,
   formatRecentAsPrompt,
 } from "@/lib/memory";
+import { getProjectContext } from "@/lib/tools/getProjectContext";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
@@ -125,6 +126,11 @@ export async function POST(req: NextRequest) {
     model: openai("gpt-4o-mini"),
     messages,
     system: systemPrompt,
+    // 工具配置 
+    tools: {
+      getProjectContext: getProjectContext(prisma), // 传入 prisma 实例
+    },
+    stopWhen: stepCountIs(5),  // 允许最多 5 步工具调用
     onFinish: async ({ text }) => {
       try {
         await prisma.message.create({
