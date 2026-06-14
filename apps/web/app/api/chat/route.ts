@@ -17,13 +17,13 @@ const prisma = new PrismaClient({
 });
 
 export async function POST(req: NextRequest) {
-  // 1. 验证用户登录
+  // 验证用户登录
   const session = await auth();
   if (!session?.user?.id) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  // 2. 解析请求体
+  // 解析请求体
   const { messages, conversationId, projectId } = (await req.json()) as {
     messages: { role: "user" | "assistant"; content: string }[];
     conversationId: string;
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     return new Response("conversationId is required", { status: 400 });
   }
 
-  // 3. 验证对话归属当前用户（防止越权）
+  //  验证对话归属当前用户（防止越权）
   const conversation = await prisma.conversation.findUnique({
     where: { id: conversationId },
   });
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     return new Response("Conversation not found", { status: 404 });
   }
 
-  // 4. 存储用户消息
+  // 存储用户消息
   const lastMessage = messages[messages.length - 1];
   if (lastMessage.role === "user") {
     await prisma.message.create({
@@ -64,10 +64,10 @@ export async function POST(req: NextRequest) {
     }).catch((err) => console.error("[Memory] 推送用户消息失败:", err));
   }
 
-  // 5. 构建 system prompt（项目上下文 + 短期记忆 + 长期记忆）
+  // 构建 system prompt（项目上下文 + 短期记忆 + 长期记忆）
   let systemPrompt = "你是一个专业的创业助手 AI Agent。";
 
-  // 5a. 项目基础信息
+  // 5项目基础信息
   if (projectId) {
     const project = await prisma.project.findFirst({
       where: { id: projectId, userId: session.user.id },
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 5b. 长期记忆：项目画像
+    // 长期记忆：项目画像
     const projectMemory = await getProjectMemory(prisma, projectId);
     if (projectMemory?.portrait) {
       const portraitText = formatPortraitAsPrompt(projectMemory.portrait);
@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 5c. 短期记忆：最近对话历史
+  // 短期记忆：最近对话历史
   const recent = await getRecentMessages(conversationId);
   if (recent.length > 0) {
     const recentText = formatRecentAsPrompt(recent);
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
 
   systemPrompt += `\n\n请根据以上信息，给出专业、有针对性的建议和分析。如果用户请求你做市场调研、产品设计、技术架构设计、数据库设计、风险分析等，请紧密结合这个项目的具体情况来回答。`;
 
-  // 6. 调用 AI 模型（流式），完成后保存 AI 回复并更新记忆
+  // 调用 AI 模型（流式），完成后保存 AI 回复并更新记忆
   const result = streamText({
     model: openai("gpt-4o-mini"),
     messages,
@@ -153,6 +153,6 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // 7. 返回流式响应
+  // 返回流式响应
   return result.toTextStreamResponse();
 }

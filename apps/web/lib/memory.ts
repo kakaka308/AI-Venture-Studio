@@ -3,31 +3,29 @@ import type { PrismaClientType } from "@ai-venture/db";
 import { Prisma } from "@ai-venture/db";
 
 // ============================================================
-//  Short-term memory config
+//  短期记忆配置
 // ============================================================
 
-/** Max messages per conversation cached in Redis */
+
 const SHORT_TERM_MAX_MSGS = 40;
-/** Redis key TTL (seconds), default 24h */
 const SHORT_TERM_TTL = 60 * 60 * 24;
 
 // ============================================================
-//  Short-term memory (Redis): recent chat history
+//  短期记忆逻辑：基于 Redis 列表的最近聊天记录
 // ============================================================
 
+// 单条短期消息的 TS 接口结构
 export interface ShortTermMessage {
   role: "user" | "assistant";
   content: string;
-  createdAt: string; // ISO string
+  createdAt: string;
 }
-
+// 根据会话 ID 生成统一规范的 Redis 键名
 function redisKey(conversationId: string) {
   return `chat:${conversationId}:recent`;
 }
 
-/**
- * Push a message to the head of the Redis list, trim length
- */
+// 新消息推入 Redis 列表头部
 export async function pushRecentMessage(
   conversationId: string,
   msg: ShortTermMessage,
@@ -40,9 +38,9 @@ export async function pushRecentMessage(
 
   try {
     const key = redisKey(conversationId);
-    await redis.lpush(key, JSON.stringify(msg));
-    await redis.ltrim(key, 0, SHORT_TERM_MAX_MSGS - 1);
-    await redis.expire(key, SHORT_TERM_TTL);
+    await redis.lpush(key, JSON.stringify(msg)); // 新消息序列化为 JSON 字符串 推入 Redis 列表的头部
+    await redis.ltrim(key, 0, SHORT_TERM_MAX_MSGS - 1); // 裁剪列表 保留索引 0 到 39 的元素
+    await redis.expire(key, SHORT_TERM_TTL); // 为该键重新设置 24 小时过期时间，防止死数据占用内存
     console.log(
       `[Memory] [OK] Short-term push: role=${msg.role}, convo=${conversationId.slice(0, 8)}...`,
     );
@@ -51,9 +49,7 @@ export async function pushRecentMessage(
   }
 }
 
-/**
- * Read recent N messages from Redis (chronological order)
- */
+// 从 Redis 读取最近的 N 条消息
 export async function getRecentMessages(
   conversationId: string,
   limit = SHORT_TERM_MAX_MSGS,
@@ -66,10 +62,10 @@ export async function getRecentMessages(
 
   try {
     const key = redisKey(conversationId);
-    const raw = await redis.lrange(key, 0, limit - 1);
+    const raw = await redis.lrange(key, 0, limit - 1); // 从 Redis 列表中获取指定范围的数据（0 到 limit-1）
     const messages = raw
       .map((item) => JSON.parse(item) as ShortTermMessage)
-      .reverse();
+      .reverse(); // 因为 LPUSH 是倒序插入的（最新消息在最前），所以需要进行反转处理
     console.log(
       `[Memory] [OK] Short-term read: ${messages.length} msgs, convo=${conversationId.slice(0, 8)}...`,
     );
@@ -80,9 +76,7 @@ export async function getRecentMessages(
   }
 }
 
-/**
- * Delete short-term memory for a conversation
- */
+// 清除某个会话的短期记忆
 export async function clearRecentMessages(
   conversationId: string,
 ): Promise<void> {
@@ -90,7 +84,7 @@ export async function clearRecentMessages(
   if (!redis) return;
 
   try {
-    await redis.del(redisKey(conversationId));
+    await redis.del(redisKey(conversationId)); // 直接删除 Redis 中对应的列表键
     console.log(
       `[Memory] [OK] Short-term cleared: convo=${conversationId.slice(0, 8)}...`,
     );
@@ -100,7 +94,7 @@ export async function clearRecentMessages(
 }
 
 // ============================================================
-//  Long-term memory (PostgreSQL): project portrait
+//  长期记忆业务逻辑：基于 PostgreSQL 的项目画像持久化
 // ============================================================
 
 export interface ProjectPortrait {
@@ -121,9 +115,7 @@ const DEFAULT_PORTRAIT: ProjectPortrait = {
   summary: "",
 };
 
-/**
- * Read project long-term memory from project_memories table
- */
+// 从数据库的 project_memories 表中读取长期的项目记忆
 export async function getProjectMemory(
   prisma: PrismaClientType,
   projectId: string,
@@ -164,24 +156,23 @@ export async function getProjectMemory(
   }
 }
 
-/**
- * Update/Create project long-term memory
- */
+// 更新或创建项目的长期记忆 (Upsert 增量式操作)
 export async function upsertProjectMemory(
   prisma: PrismaClientType,
   projectId: string,
   updates: Partial<ProjectPortrait>,
 ): Promise<void> {
   try {
-    const existing = await prisma.projectMemory.findUnique({
+    // 查询该项目现有的长期记忆
+    const existing = await prisma.projectMemory.findUnique({ 
       where: { projectId },
     });
-
-    const portrait: ProjectPortrait = existing
+    // if存在旧数据，以旧数据为基础，or默认
+    const portrait: ProjectPortrait = existing  
       ? { ...DEFAULT_PORTRAIT, ...(existing.portrait as Record<string, unknown>) }
       : { ...DEFAULT_PORTRAIT };
 
-    // Merge updates
+    // 将传入的增量更新字段逐个覆盖到现有的画像中
     if (updates.industry !== undefined) portrait.industry = updates.industry;
     if (updates.targetUsers !== undefined)
       portrait.targetUsers = updates.targetUsers;
@@ -189,15 +180,16 @@ export async function upsertProjectMemory(
       portrait.businessModel = updates.businessModel;
     if (updates.summary !== undefined) portrait.summary = updates.summary;
 
-    // Insights: deduplicate and append
+    // keyInsights特殊处理：去重并追加
     if (updates.keyInsights?.length) {
-      const existingInsights = new Set(portrait.keyInsights);
+      const existingInsights = new Set(portrait.keyInsights); 
       for (const insight of updates.keyInsights) {
         existingInsights.add(insight);
       }
       portrait.keyInsights = Array.from(existingInsights);
     }
 
+    // 调用 Prisma 的 upsert 操作：存在则更新 不存在创建
     await prisma.projectMemory.upsert({
       where: { projectId },
       create: {
@@ -219,12 +211,15 @@ export async function upsertProjectMemory(
   }
 }
 
-/**
- * Format project portrait as a system prompt fragment
- */
+// ============================================================
+//  提示词组装工具 (Prompt Formatting Helpers)
+// ============================================================
+
+// 将长期的项目画像数据格式化为可以嵌入到 System Prompt（系统提示词）中的文本片段
 export function formatPortraitAsPrompt(portrait: ProjectPortrait): string {
   const lines: string[] = [];
 
+  // 如果各字段有内容，则以结构化的行文本形式放入数组中
   if (portrait.industry) {
     lines.push("Industry: " + portrait.industry);
   }
@@ -235,6 +230,7 @@ export function formatPortraitAsPrompt(portrait: ProjectPortrait): string {
     lines.push("Business Model: " + portrait.businessModel);
   }
 
+  // 格式化洞察数组，将其变成用 “- ” 引导的 Markdown 列表形式
   if (portrait.keyInsights.length > 0) {
     lines.push(
       "Key Insights:\n" +
@@ -249,9 +245,7 @@ export function formatPortraitAsPrompt(portrait: ProjectPortrait): string {
   return lines.length > 0 ? lines.join("\n") : "";
 }
 
-/**
- * Format short-term messages as a system prompt fragment
- */
+// 将短期的 Redis 历史消息列表格式化为适合注入 LLM 上下文的文本片段
 export function formatRecentAsPrompt(messages: ShortTermMessage[]): string {
   if (messages.length === 0) return "";
   return messages
