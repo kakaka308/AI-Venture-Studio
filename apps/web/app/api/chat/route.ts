@@ -1,8 +1,14 @@
 import { auth } from "@/auth";
 import { PrismaClient } from "@ai-venture/db";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { stepCountIs, streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { stepCountIs, streamText, type ModelMessage } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
+
+// 通义千问 API（OpenAI 兼容模式）
+const qwen = createOpenAI({
+  baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  apiKey: process.env.QWEN_API_KEY,
+});
 import { NextRequest } from "next/server";
 import {
   getRecentMessages,
@@ -17,6 +23,26 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
 });
 
+// 提取消息文本（兼容 string content 和 parts/content 数组格式）
+function getMessageText(msg: Record<string, unknown>): string {
+  const content = msg.content;
+  const parts = msg.parts;
+
+  if (Array.isArray(content)) {
+    return content
+      .filter((p: Record<string, unknown>) => p.type === "text")
+      .map((p: Record<string, unknown>) => (p.text as string) ?? "")
+      .join("");
+  }
+  if (Array.isArray(parts)) {
+    return parts
+      .filter((p: Record<string, unknown>) => p.type === "text")
+      .map((p: Record<string, unknown>) => (p.text as string) ?? "")
+      .join("");
+  }
+  return typeof content === "string" ? content : "";
+}
+
 export async function POST(req: NextRequest) {
   // 验证用户登录
   const session = await auth();
@@ -25,11 +51,29 @@ export async function POST(req: NextRequest) {
   }
 
   // 解析请求体
-  const { messages, conversationId, projectId } = (await req.json()) as {
-    messages: { role: "user" | "assistant"; content: string }[];
+  const body = await req.json();
+  const { messages: rawMessages, conversationId, projectId } = body as {
+    messages: Record<string, unknown>[];
     conversationId: string;
     projectId?: string;
   };
+
+  // 规范化消息格式：AI SDK v6 客户端使用 parts[]，但服务端 streamText 期望 content（string | array）
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const messages = rawMessages.map((msg): any => {
+    // 如果已有 content 字段，直接使用
+    if ("content" in msg && msg.content !== undefined) {
+      return msg;
+    }
+    // 将 parts[] 转成 content 格式
+    if ("parts" in msg && Array.isArray(msg.parts)) {
+      const { parts, ...rest } = msg;
+      return { ...rest, content: parts };
+    }
+    return msg;
+  }) as ModelMessage[];
+
+  console.log("[Chat API] 收到请求, messages:", JSON.stringify(messages).slice(0, 200));
 
   if (!messages?.length) {
     return new Response("Messages are required", { status: 400 });
@@ -49,9 +93,10 @@ export async function POST(req: NextRequest) {
   // 存储用户消息
   const lastMessage = messages[messages.length - 1];
   if (lastMessage.role === "user") {
+    const userContent = getMessageText(lastMessage);
     await prisma.message.create({
       data: {
-        content: lastMessage.content,
+        content: userContent,
         role: "user",
         conversationId,
       },
@@ -60,7 +105,7 @@ export async function POST(req: NextRequest) {
     // ---- 短期记忆：推送用户消息到 Redis ----
     pushRecentMessage(conversationId, {
       role: "user",
-      content: lastMessage.content,
+      content: userContent,
       createdAt: new Date().toISOString(),
     }).catch((err) => console.error("[Memory] 推送用户消息失败:", err));
   }
@@ -68,7 +113,7 @@ export async function POST(req: NextRequest) {
   // 构建 system prompt（项目上下文 + 短期记忆 + 长期记忆）
   let systemPrompt = "你是一个专业的创业助手 AI Agent。";
 
-  // 5项目基础信息
+  // 项目基础信息
   if (projectId) {
     const project = await prisma.project.findFirst({
       where: { id: projectId, userId: session.user.id },
@@ -122,43 +167,62 @@ export async function POST(req: NextRequest) {
   systemPrompt += `\n\n请根据以上信息，给出专业、有针对性的建议和分析。如果用户请求你做市场调研、产品设计、技术架构设计、数据库设计、风险分析等，请紧密结合这个项目的具体情况来回答。`;
 
   // 调用 AI 模型（流式），完成后保存 AI 回复并更新记忆
-  const result = streamText({
-    model: openai("gpt-4o-mini"),
-    messages,
-    system: systemPrompt,
-    // 工具配置 
-    tools: {
-      getProjectContext: getProjectContext(prisma), // 传入 prisma 实例
-    },
-    stopWhen: stepCountIs(5),  // 允许最多 5 步工具调用
-    onFinish: async ({ text }) => {
-      try {
-        await prisma.message.create({
-          data: {
-            content: text,
-            role: "assistant",
-            conversationId,
+  console.log("[Chat API] 开始调用模型:", "qwen3.6-flash", "消息数:", messages.length);
+  try {
+    const result = streamText({
+      model: qwen("qwen3.6-flash"),
+      messages,
+      system: systemPrompt,
+      // 禁用推理模式：qwen3.6-flash 默认返回 reasoning_content（思考过程）
+      // 大部分 chunk 的 content 为 null，导致 AI SDK 的 OpenAI provider 无法正确解析文本内容
+      providerOptions: {
+        openai: {
+          extraBody: {
+            enable_thinking: false,
           },
-        });
-        await prisma.conversation.update({
-          where: { id: conversationId },
-          data: { updatedAt: new Date() },
-        });
+        },
+      },
+      // 工具配置 
+      tools: {
+        getProjectContext: getProjectContext(prisma),
+      },
+      stopWhen: stepCountIs(5),
+      onFinish: async ({ text }) => {
+        console.log("[Chat API] 模型返回完成，响应长度:", text?.length);
+        try {
+          await prisma.message.create({
+            data: {
+              content: text,
+              role: "assistant",
+              conversationId,
+            },
+          });
+          await prisma.conversation.update({
+            where: { id: conversationId },
+            data: { updatedAt: new Date() },
+          });
 
-        // ---- 短期记忆：推送 AI 回复到 Redis ----
-        pushRecentMessage(conversationId, {
-          role: "assistant",
-          content: text,
-          createdAt: new Date().toISOString(),
-        }).then(() => {
-          console.log("[Memory] ✓ AI 回复已推送到短期记忆");
-        }).catch((err) => console.error("[Memory] 推送 AI 回复失败:", err));
-      } catch (err) {
-        console.error("Failed to persist assistant message:", err);
-      }
-    },
-  });
+          // ---- 短期记忆：推送 AI 回复到 Redis ----
+          pushRecentMessage(conversationId, {
+            role: "assistant",
+            content: text,
+            createdAt: new Date().toISOString(),
+          }).then(() => {
+            console.log("[Memory] ✓ AI 回复已推送到短期记忆");
+          }).catch((err) => console.error("[Memory] 推送 AI 回复失败:", err));
+        } catch (err) {
+          console.error("Failed to persist assistant message:", err);
+        }
+      },
+    });
 
-  // 返回流式响应
-  return result.toTextStreamResponse();
+    // 返回 UI 消息流响应（配合客户端 useChat + DefaultChatTransport 使用）
+    return result.toUIMessageStreamResponse();
+  } catch (err) {
+    console.error("[Chat API] 调用 AI 模型失败:", err);
+    return new Response(
+      JSON.stringify({ error: "AI 模型调用失败，请检查 API Key 和模型名称" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
 }

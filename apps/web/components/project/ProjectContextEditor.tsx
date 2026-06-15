@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface ProjectContext {
   id?: string;
@@ -21,6 +21,18 @@ export default function ProjectContextEditor({ projectId }: ProjectContextEditor
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+
+  // 自动撑高 textarea 的回调 ref
+  const autoResizeRefFn = useCallback((el: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    const adjust = () => {
+      el.style.height = "auto";
+      el.style.height = el.scrollHeight + "px";
+    };
+    adjust();
+    el.addEventListener("input", adjust);
+    return () => el.removeEventListener("input", adjust);
+  }, []);
 
   // 加载项目上下文
   useEffect(() => {
@@ -94,7 +106,8 @@ export default function ProjectContextEditor({ projectId }: ProjectContextEditor
         <textarea
           value={context.targetAudience || ""}
           onChange={(e) => setContext({ ...context, targetAudience: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          ref={autoResizeRefFn}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none overflow-hidden"
           placeholder="描述你的目标用户群体，例如：中小企业主、Z世代消费者、技术爱好者..."
           rows={3}
         />
@@ -106,7 +119,8 @@ export default function ProjectContextEditor({ projectId }: ProjectContextEditor
         <textarea
           value={context.problem || ""}
           onChange={(e) => setContext({ ...context, problem: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          ref={autoResizeRefFn}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none overflow-hidden"
           placeholder="你的项目要解决用户什么具体问题？"
           rows={3}
         />
@@ -118,7 +132,8 @@ export default function ProjectContextEditor({ projectId }: ProjectContextEditor
         <textarea
           value={context.valueProposition || ""}
           onChange={(e) => setContext({ ...context, valueProposition: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          ref={autoResizeRefFn}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none overflow-hidden"
           placeholder="你的项目为用户提供什么样的独特价值或好处？"
           rows={3}
         />
@@ -130,7 +145,8 @@ export default function ProjectContextEditor({ projectId }: ProjectContextEditor
         <textarea
           value={context.competitors || ""}
           onChange={(e) => setContext({ ...context, competitors: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+          ref={autoResizeRefFn}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none overflow-hidden"
           placeholder="列出主要竞争对手，用逗号分隔"
           rows={2}
         />

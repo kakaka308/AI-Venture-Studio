@@ -4,6 +4,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import ConversationList, { type Conversation } from "./ConversationList";
 import MessageList from "./MessageList";
 import ChatInput from "./ChatInput";
@@ -56,22 +57,36 @@ export default function ChatLayout() {
     }
   }, []);
 
+  // Memoize transport to prevent re-creation on every render
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: "/api/chat",
+      }),
+    []
+  );
+
   const {
     messages,
     status,
     sendMessage,
     setMessages,
     error,
-    stop,
   } = useChat({
-    transport: new DefaultChatTransport({
-      api: "/api/chat",
-      body: { conversationId, projectId },
-    }),
-    onFinish: () => {
+    transport,
+    onFinish: (msg) => {
+      console.log("[Chat] onFinish called, message:", JSON.stringify(msg).slice(0, 100));
       refreshConversations();
     },
+    onError: (err) => {
+      console.error("[Chat] useChat error:", err);
+    },
   });
+
+  // Debug: log messages whenever they change
+  useEffect(() => {
+    console.log("[Chat] messages count:", messages.length, "last:", JSON.stringify(messages[messages.length - 1]?.role));
+  }, [messages]);
 
   const isLoading = status === "submitted" || status === "streaming";
 
@@ -184,10 +199,10 @@ export default function ChatLayout() {
       }
       if (!input.trim() || isLoading) return;
 
-      sendMessage({ text: input });
+      sendMessage({ text: input }, { body: { conversationId, projectId } });
       setInput("");
     },
-    [conversationId, input, isLoading, sendMessage]
+    [conversationId, projectId, input, isLoading, sendMessage]
   );
 
   const handleInputChange = useCallback(
@@ -241,6 +256,26 @@ export default function ChatLayout() {
                 <line x1="3" y1="18" x2="21" y2="18" />
               </svg>
             </button>
+          )}
+          {projectId && (
+            <Link
+              href={`/projects/${projectId}`}
+              className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 font-medium shrink-0 transition-colors"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              返回项目
+            </Link>
           )}
           <h1 className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate">
             {projectId && projectName ? (
