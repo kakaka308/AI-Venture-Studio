@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import ProjectContextEditor from "@/components/project/ProjectContextEditor";
+import TaskList from "@/components/project/TaskList";
 import Link from "next/link";
 
 interface Project {
@@ -83,15 +84,9 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   if (!project) return <div className="p-8">项目不存在</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-4xl mx-auto">
-        <button
-          onClick={() => router.push("/dashboard")}
-          className="text-blue-600 mb-4"
-        >
-          ← 返回 Dashboard
-        </button>
-
+    <div className="max-w-4xl mx-auto">
+      {/* 1. 基本信息 */}
+      <section id="overview" className="scroll-mt-24">
         <div className="bg-white p-8 rounded-lg shadow">
           {isEditing ? (
             <>
@@ -182,27 +177,51 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             </>
           )}
         </div>
+      </section>
 
-        {/* 项目上下文配置 */}
-        {!isEditing && (
-          <div className="bg-white p-8 rounded-lg shadow mt-6">
+      {/* 2. 项目上下文配置 */}
+      {!isEditing && (
+        <section id="context" className="scroll-mt-24 mt-6">
+          <div className="bg-white p-8 rounded-lg shadow">
             <ProjectContextEditor projectId={project.id} />
           </div>
-        )}
+        </section>
+      )}
 
-        {/* 进入 AI Chat */}
-        {!isEditing && (
-          <div className="mt-6 text-center">
-            <Link
-              href={`/chat?projectId=${project.id}`}
-              className="inline-block bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors font-medium"
-            >
-              💬 进入 AI 创业助手对话
-            </Link>
+      {/* 3. 任务管理 */}
+      {!isEditing && (
+        <section id="tasks" className="scroll-mt-24 mt-6">
+          <div className="bg-white p-8 rounded-lg shadow">
+            <h2 className="text-lg font-bold mb-4">
+              <span className="inline-flex items-center gap-2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <line x1="9" y1="9" x2="15" y2="9" />
+                  <line x1="9" y1="13" x2="15" y2="13" />
+                  <line x1="9" y1="17" x2="12" y2="17" />
+                </svg>
+                任务管理
+              </span>
+            </h2>
+            <TaskList projectId={project.id} />
           </div>
-        )}
-      </div>
+        </section>
+      )}
+
+      {/* 4. 进入 AI Chat */}
+      {!isEditing && (
+        <section id="chat" className="scroll-mt-24 mt-6 text-center">
+          <Link
+            href={`/chat?projectId=${project.id}`}
+            className="inline-flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors font-medium"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+            进入 AI 创业助手对话
+          </Link>
+        </section>
+      )}
     </div>
   );
 }
-

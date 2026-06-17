@@ -74,6 +74,24 @@ export default function ChatLayout() {
     error,
   } = useChat({
     transport,
+    onToolCall: ({ toolCall }) => {
+      const tc = toolCall as unknown as {
+        toolName: string;
+        args: Record<string, unknown>;
+        state: string;
+        result?: unknown;
+      };
+      console.log(
+        `%c[Tool Call] %c${tc.toolName}`,
+        "color: #8b5cf6; font-weight: bold;",
+        "color: #6366f1;",
+        "\n  参数:",
+        tc.args,
+        tc.state === "result"
+          ? `\n  结果: ${(() => { try { return JSON.stringify(tc.result).slice(0, 200); } catch { return "[序列化失败]"; } })()}`
+          : "",
+      );
+    },
     onFinish: (msg) => {
       console.log("[Chat] onFinish called, message:", JSON.stringify(msg).slice(0, 100));
       refreshConversations();
@@ -83,10 +101,6 @@ export default function ChatLayout() {
     },
   });
 
-  // Debug: log messages whenever they change
-  useEffect(() => {
-    console.log("[Chat] messages count:", messages.length, "last:", JSON.stringify(messages[messages.length - 1]?.role));
-  }, [messages]);
 
   const isLoading = status === "submitted" || status === "streaming";
 

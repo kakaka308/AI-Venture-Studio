@@ -76,6 +76,31 @@ export const createTask = (prisma: PrismaClient) =>
           };
         }
 
+        // 防重复：检查是否已存在同名未完成任务
+        const existingTask = await prisma.task.findFirst({
+          where: {
+            projectId,
+            title,
+            status: { in: ["todo", "in_progress"] },
+          },
+        });
+        if (existingTask) {
+          console.log(`[Tool:createTask] 任务已存在，跳过创建: "${title}" (id=${existingTask.id})`);
+          return {
+            success: true,
+            message: `任务「${title}」已存在，无需重复创建`,
+            task: {
+              id: existingTask.id,
+              title: existingTask.title,
+              description: existingTask.description,
+              priority: existingTask.priority,
+              status: existingTask.status,
+              dueDate: existingTask.dueDate?.toISOString().split("T")[0] || null,
+              assignedTo: existingTask.assignedTo,
+            },
+          };
+        }
+
         // 解析截止日期
         const parsedDueDate = dueDate ? new Date(dueDate) : null;
         if (dueDate && isNaN(parsedDueDate!.getTime())) {

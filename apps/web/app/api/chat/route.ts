@@ -125,6 +125,7 @@ export async function POST(req: NextRequest) {
 
     if (project) {
       const contextLines = [
+        `项目ID：${project.id}`,
         `项目名称：${project.name}`,
         project.description && `项目描述：${project.description}`,
         project.industry && `行业：${project.industry}`,
@@ -167,6 +168,9 @@ export async function POST(req: NextRequest) {
     console.log("[Memory] 无短期记忆，跳过注入");
   }
 
+  if (projectId) {
+    systemPrompt += `\n\n重要提示：当前项目ID为 "${projectId}"，调用 createTask、saveProjectMemory、getProjectContext 等工具时请使用此ID。`;
+  }
   systemPrompt += `\n\n请根据以上信息，给出专业、有针对性的建议和分析。如果用户请求你做市场调研、产品设计、技术架构设计、数据库设计、风险分析等，请紧密结合这个项目的具体情况来回答。`;
 
   // 调用 AI 模型（流式），完成后保存 AI 回复并更新记忆
@@ -192,7 +196,7 @@ export async function POST(req: NextRequest) {
         createTask: createTask(prisma),
         searchKnowledgeBase: searchKnowledgeBase(prisma),
       },
-      stopWhen: stepCountIs(5),
+      stopWhen: stepCountIs(3),
       onFinish: async ({ text }) => {
         console.log("[Chat API] 模型返回完成，响应长度:", text?.length);
         try {
