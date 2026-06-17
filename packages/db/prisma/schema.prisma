@@ -76,6 +76,12 @@ model Project {
 
   // 项目长期记忆（一对一）
   memory         ProjectMemory?
+
+  // 项目任务（一对多）
+  tasks          Task[]
+
+  // 项目知识库（一对多）
+  knowledgeEntries KnowledgeEntry[]
 }
 
 model ProjectContext {
@@ -137,4 +143,50 @@ model Message {
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   
   @@index([conversationId])
+}
+
+// ---------------------------------------------------------------------------
+//  Task - 项目任务管理
+// ---------------------------------------------------------------------------
+model Task {
+  id          String    @id @default(cuid())
+  title       String
+  description String?   @db.Text
+  priority    String    @default("medium")   // low | medium | high | urgent
+  status      String    @default("todo")      // todo | in_progress | done | cancelled
+  dueDate     DateTime?
+  assignedTo  String?                         // 负责人（用户 ID 或姓名）
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // 关联项目
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([status])
+  @@index([priority])
+  @@map("tasks")
+}
+
+// ---------------------------------------------------------------------------
+//  KnowledgeEntry - 项目知识库（支持 PostgreSQL 全文搜索）
+// ---------------------------------------------------------------------------
+model KnowledgeEntry {
+  id        String   @id @default(cuid())
+  title     String
+  content   String   @db.Text
+  category  String?  // market_data | competitor_info | industry_trend | startup_knowledge | other
+  tags      String[] @default([])
+  source    String?  // 信息来源
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 可选：关联到特定项目，为空表示全局知识
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([category])
+  @@map("knowledge_entries")
 }

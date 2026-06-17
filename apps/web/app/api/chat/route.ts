@@ -19,6 +19,8 @@ import {
 } from "@/lib/memory";
 import { getProjectContext } from "@/lib/tools/getProjectContext";
 import { saveProjectMemory } from "@/lib/tools/saveProjectMemory";
+import { createTask } from "@/lib/tools/createTask";
+import { searchKnowledgeBase } from "@/lib/tools/searchKnowledgeBase";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
@@ -187,6 +189,8 @@ export async function POST(req: NextRequest) {
       tools: {
         getProjectContext: getProjectContext(prisma),
         saveProjectMemory: saveProjectMemory(prisma),
+        createTask: createTask(prisma),
+        searchKnowledgeBase: searchKnowledgeBase(prisma),
       },
       stopWhen: stepCountIs(5),
       onFinish: async ({ text }) => {
