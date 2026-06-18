@@ -4,6 +4,17 @@ import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type { UIMessage } from "ai";
 import type { Components } from "react-markdown";
+import {
+  Wrench,
+  Search,
+  ClipboardList,
+  Brain,
+  CheckSquare,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
+  Check,
+} from "lucide-react";
 
 interface MessageBubbleProps {
   message: UIMessage | { id?: string; role: string; content: string };
@@ -17,16 +28,17 @@ const TOOL_NAMES_CN: Record<string, string> = {
   searchKnowledgeBase: "搜索知识库",
 };
 
-// 工具图标映射
-const TOOL_ICONS: Record<string, string> = {
-  getProjectContext: "📋",
-  saveProjectMemory: "🧠",
-  createTask: "✅",
-  searchKnowledgeBase: "🔍",
+// 工具 lucide 图标映射
+const TOOL_LUCIDE_ICONS: Record<string, React.ComponentType<{ className?: string; size?: number }>> = {
+  getProjectContext: ClipboardList,
+  saveProjectMemory: Brain,
+  createTask: CheckSquare,
+  searchKnowledgeBase: Search,
 };
 
 export default function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const [toolsExpanded, setToolsExpanded] = useState(false);
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
 
   // Extract text content and tool-call parts
@@ -69,6 +81,8 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
       toolParts: [],
     };
   }, [message]);
+
+  const toggleAllTools = () => setToolsExpanded((prev) => !prev);
 
   const toggleTool = (toolId: string) => {
     setExpandedTools((prev) => {
@@ -138,6 +152,67 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
     ),
   };
 
+  // Render a single tool call card
+  const renderToolCard = (tool: {
+    toolName: string;
+    args: Record<string, unknown>;
+    result?: unknown;
+    state: string;
+  }, idx: number) => {
+    const toolId = `${message.id}-tool-${idx}`;
+    const isExpanded = expandedTools.has(toolId);
+    const isDone = tool.state === "result";
+    const IconComponent = TOOL_LUCIDE_ICONS[tool.toolName] || Wrench;
+    const nameCn = TOOL_NAMES_CN[tool.toolName] || tool.toolName;
+
+    return (
+      <div
+        key={toolId}
+        className="border border-purple-200 dark:border-purple-800 rounded-lg overflow-hidden bg-purple-50/50 dark:bg-purple-950/30"
+      >
+        <button
+          onClick={() => toggleTool(toolId)}
+          className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-purple-100/50 dark:hover:bg-purple-900/30 transition-colors"
+        >
+          {isDone ? (
+            <Check className="w-3.5 h-3.5 text-green-500 shrink-0" />
+          ) : (
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-500 shrink-0" />
+          )}
+          <IconComponent className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+          <span className="text-xs font-medium text-purple-700 dark:text-purple-300">{nameCn}</span>
+          <span className="text-[10px] text-purple-400 font-mono ml-auto">{tool.toolName}</span>
+          {isExpanded ? (
+            <ChevronUp className="w-3 h-3 text-purple-400 shrink-0" />
+          ) : (
+            <ChevronDown className="w-3 h-3 text-purple-400 shrink-0" />
+          )}
+        </button>
+
+        {isExpanded && (
+          <div className="px-3 pb-3 space-y-2 border-t border-purple-200 dark:border-purple-800">
+            <div>
+              <div className="text-[10px] font-semibold text-purple-500 uppercase mt-2 mb-1">输入参数</div>
+              <pre className="text-[11px] bg-purple-100 dark:bg-purple-900/40 rounded px-2 py-1.5 overflow-x-auto font-mono text-purple-800 dark:text-purple-200 max-h-32 overflow-y-auto">
+                {JSON.stringify(tool.args, null, 2)}
+              </pre>
+            </div>
+            {isDone && tool.result !== undefined && (
+              <div>
+                <div className="text-[10px] font-semibold text-green-600 dark:text-green-400 uppercase mt-2 mb-1">返回结果</div>
+                <pre className="text-[11px] bg-green-50 dark:bg-green-950/40 rounded px-2 py-1.5 overflow-x-auto font-mono text-green-800 dark:text-green-200 max-h-48 overflow-y-auto">
+                  {typeof tool.result === "string" ? tool.result : JSON.stringify(tool.result, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const showThinkingState = toolParts.length > 0 && !textContent;
+
   return (
     <div
       className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}
@@ -168,83 +243,58 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
             : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-sm"
         }`}
       >
-        {/* Tool call visual indicators */}
-        {toolParts.length > 0 && (
-          <div className="mb-3 space-y-2">
-            {toolParts.map((tool, idx) => {
-              const toolId = `${message.id}-tool-${idx}`;
-              const isExpanded = expandedTools.has(toolId);
-              const isDone = tool.state === "result";
-              const icon = TOOL_ICONS[tool.toolName] || "🔧";
-              const nameCn = TOOL_NAMES_CN[tool.toolName] || tool.toolName;
-
-              return (
-                <div
-                  key={toolId}
-                  className="border border-purple-200 dark:border-purple-800 rounded-lg overflow-hidden bg-purple-50/50 dark:bg-purple-950/30"
-                >
-                  {/* Header - clickable */}
-                  <button
-                    onClick={() => toggleTool(toolId)}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-purple-100/50 dark:hover:bg-purple-900/30 transition-colors"
-                  >
-                    <span className="shrink-0">
-                      {isDone ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-green-500">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      ) : (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin text-purple-500">
-                          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                        </svg>
-                      )}
-                    </span>
-                    <span className="text-xs">{icon}</span>
-                    <span className="text-xs font-medium text-purple-700 dark:text-purple-300">{nameCn}</span>
-                    <span className="text-[10px] text-purple-400 font-mono ml-auto">{tool.toolName}</span>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`text-purple-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}>
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  </button>
-
-                  {/* Collapsible detail */}
-                  {isExpanded && (
-                    <div className="px-3 pb-3 space-y-2 border-t border-purple-200 dark:border-purple-800">
-                      <div>
-                        <div className="text-[10px] font-semibold text-purple-500 uppercase mt-2 mb-1">输入参数</div>
-                        <pre className="text-[11px] bg-purple-100 dark:bg-purple-900/40 rounded px-2 py-1.5 overflow-x-auto font-mono text-purple-800 dark:text-purple-200 max-h-32 overflow-y-auto">
-                          {JSON.stringify(tool.args, null, 2)}
-                        </pre>
-                      </div>
-                      {isDone && tool.result !== undefined && (
-                        <div>
-                          <div className="text-[10px] font-semibold text-green-600 dark:text-green-400 uppercase mt-2 mb-1">返回结果</div>
-                          <pre className="text-[11px] bg-green-50 dark:bg-green-950/40 rounded px-2 py-1.5 overflow-x-auto font-mono text-green-800 dark:text-green-200 max-h-48 overflow-y-auto">
-                            {typeof tool.result === "string" ? tool.result : JSON.stringify(tool.result, null, 2)}
-                          </pre>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
         {isUser ? (
           // User messages: plain text with line breaks
           <p className="whitespace-pre-wrap">{textContent}</p>
-        ) : (
-          // Assistant messages: full markdown rendering
-          textContent ? (
+        ) : showThinkingState ? (
+          // Thinking state: single bubble with toggle
+          <div>
+            <button
+              onClick={toggleAllTools}
+              className="flex items-center gap-2 text-xs text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
+            >
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>AI 正在思考...</span>
+              {toolsExpanded ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+            </button>
+            {toolsExpanded && (
+              <div className="mt-3 space-y-2">
+                {toolParts.map((tool, idx) => renderToolCard(tool, idx))}
+              </div>
+            )}
+          </div>
+        ) : textContent ? (
+          // Assistant text content with optional tool summary
+          <div>
+            {toolParts.length > 0 && (
+              <div className="mb-3">
+                <button
+                  onClick={toggleAllTools}
+                  className="flex items-center gap-1.5 text-[10px] text-purple-500 hover:text-purple-600 dark:text-purple-400 dark:hover:text-purple-300 transition-colors"
+                >
+                  {toolsExpanded ? (
+                    <ChevronUp className="w-3 h-3" />
+                  ) : (
+                    <ChevronDown className="w-3 h-3" />
+                  )}
+                  <span>已使用 {toolParts.length} 个工具</span>
+                </button>
+                {toolsExpanded && (
+                  <div className="mt-2 space-y-2">
+                    {toolParts.map((tool, idx) => renderToolCard(tool, idx))}
+                  </div>
+                )}
+              </div>
+            )}
             <ReactMarkdown components={markdownComponents}>
               {textContent}
             </ReactMarkdown>
-          ) : toolParts.length > 0 ? (
-            <p className="text-gray-400 dark:text-gray-500 italic text-xs">AI 正在使用工具...</p>
-          ) : null
-        )}
+          </div>
+        ) : null}
       </div>
 
       {/* Avatar - only for user */}
