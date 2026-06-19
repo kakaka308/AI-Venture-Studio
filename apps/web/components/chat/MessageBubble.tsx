@@ -41,7 +41,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
   const [toolsExpanded, setToolsExpanded] = useState(false);
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
 
-  // Extract text content and tool-call parts
+  // 提取文本内容和工具调用部分
   const { textContent, toolParts } = useMemo(() => {
     if ("parts" in message && Array.isArray(message.parts)) {
       const textParts: string[] = [];
@@ -93,7 +93,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
     });
   };
 
-  // Shared markdown components for light + dark mode
+  // 亮色/暗色模式共用的 markdown 渲染组件
   const markdownComponents: Components = {
     h1: ({ children }) => (
       <h1 className="text-lg font-bold mt-3 mb-2 first:mt-0">{children}</h1>
@@ -152,7 +152,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
     ),
   };
 
-  // Render a single tool call card
+  // 渲染单个工具调用卡片
   const renderToolCard = (tool: {
     toolName: string;
     args: Record<string, unknown>;
@@ -217,7 +217,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
     <div
       className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}
     >
-      {/* Avatar - only for assistant */}
+      {/* 头像 - AI 助手 */}
       {!isUser && (
         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shrink-0">
           <svg
@@ -235,7 +235,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         </div>
       )}
 
-      {/* Bubble */}
+      {/* 消息气泡 */}
       <div
         className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed overflow-x-auto ${
           isUser
@@ -244,31 +244,63 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         }`}
       >
         {isUser ? (
-          // User messages: plain text with line breaks
+          // 用户消息：纯文本 + 保留换行
           <p className="whitespace-pre-wrap">{textContent}</p>
         ) : showThinkingState ? (
-          // Thinking state: single bubble with toggle
-          <div>
-            <button
-              onClick={toggleAllTools}
-              className="flex items-center gap-2 text-xs text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
-            >
+          // 思考状态：直接展示工具调用进度
+          <div className="space-y-2">
+            {/* 头部：显示进度信息 */}
+            <div className="flex items-center gap-2 text-xs text-purple-600 dark:text-purple-400">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
               <span>AI 正在思考...</span>
-              {toolsExpanded ? (
-                <ChevronUp className="w-3.5 h-3.5" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5" />
+              {toolParts.length > 0 && (
+                <span className="text-[10px] opacity-70">
+                  ({toolParts.filter(t => t.state === "result").length}/{toolParts.length} 个工具)
+                </span>
               )}
-            </button>
+              <button
+                onClick={toggleAllTools}
+                className="ml-auto hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded p-0.5 transition-colors"
+              >
+                {toolsExpanded ? (
+                  <ChevronUp className="w-3 h-3" />
+                ) : (
+                  <ChevronDown className="w-3 h-3" />
+                )}
+              </button>
+            </div>
+
+            {/* 工具列表 - 始终可见 */}
+            <div className="space-y-1.5">
+              {toolParts.map((tool, idx) => {
+                const IconComponent = TOOL_LUCIDE_ICONS[tool.toolName] || Wrench;
+                const nameCn = TOOL_NAMES_CN[tool.toolName] || tool.toolName;
+                const isDone = tool.state === "result";
+
+                return (
+                  <div key={`${message.id}-tool-${idx}`} className="flex items-center gap-1.5 text-[11px]">
+                    {isDone ? (
+                      <Check className="w-3 h-3 text-green-500 shrink-0" />
+                    ) : (
+                      <Loader2 className="w-3 h-3 animate-spin text-purple-500 shrink-0" />
+                    )}
+                    <IconComponent className="w-3 h-3 text-purple-500 shrink-0" />
+                    <span className="text-purple-700 dark:text-purple-300">{nameCn}</span>
+                    <span className="text-[10px] text-purple-400 font-mono ml-auto">{tool.toolName}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 展开后的详情：参数 + 返回结果 */}
             {toolsExpanded && (
-              <div className="mt-3 space-y-2">
+              <div className="mt-2 space-y-2">
                 {toolParts.map((tool, idx) => renderToolCard(tool, idx))}
               </div>
             )}
           </div>
         ) : textContent ? (
-          // Assistant text content with optional tool summary
+          // AI 文本内容，可选附带已使用工具摘要
           <div>
             {toolParts.length > 0 && (
               <div className="mb-3">
@@ -297,7 +329,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         ) : null}
       </div>
 
-      {/* Avatar - only for user */}
+      {/* 头像 - 用户 */}
       {isUser && (
         <div className="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center shrink-0">
           <svg

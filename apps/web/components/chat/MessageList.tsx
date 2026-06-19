@@ -15,9 +15,9 @@ export default function MessageList({
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom when messages update or during streaming
+  // 消息更新或流式传输时自动滚动到底部
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({ behavior: "instant" });
   }, [messages]);
 
   return (
@@ -31,10 +31,10 @@ export default function MessageList({
           />
         ))}
 
-      {/* Loading indicator when assistant is thinking */}
+      {/* AI 思考时的加载指示器 */}
       {isLoading && (
         <div className="flex gap-3 items-start">
-          {/* Animated avatar */}
+          {/* 动态头像 */}
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shrink-0 relative">
             <div className="absolute inset-0 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 animate-pulse" />
             <svg
@@ -51,7 +51,7 @@ export default function MessageList({
               <path d="M2 12l10 5 10-5" />
             </svg>
           </div>
-          {/* Thinking bubble */}
+          {/* 思考中气泡 */}
           <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-gray-100 dark:bg-gray-800">
             <div className="flex items-center gap-2">
               <svg
@@ -76,7 +76,7 @@ export default function MessageList({
         </div>
       )}
 
-      {/* Scroll anchor */}
+      {/* 滚动锚点 */}
       <div ref={bottomRef} />
     </div>
   );
