@@ -81,7 +81,7 @@ model Project {
   tasks          Task[]
 
   // 项目知识库（一对多）
-  knowledgeEntries KnowledgeEntry[]
+  knowledgeDocuments KnowledgeDocument[]
 }
 
 model ProjectContext {
@@ -170,23 +170,40 @@ model Task {
 }
 
 // ---------------------------------------------------------------------------
-//  KnowledgeEntry - 项目知识库（支持 PostgreSQL 全文搜索）
+//  KnowledgeDocument - 知识文档（支持上传和手动输入）
 // ---------------------------------------------------------------------------
-model KnowledgeEntry {
+
+model KnowledgeDocument {
   id        String   @id @default(cuid())
-  title     String
+  fileName  String
+  fileType  String   // pdf | markdown | txt
+  fileSize  Int
   content   String   @db.Text
-  category  String?  // market_data | competitor_info | industry_trend | startup_knowledge | other
-  tags      String[] @default([])
-  source    String?  // 信息来源
+  metadata  Json?    // 额外元数据
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // 可选：关联到特定项目，为空表示全局知识
-  projectId String?
-  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-
-  @@index([projectId])
-  @@index([category])
-  @@map("knowledge_entries")
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // 关联分块
+  chunks    KnowledgeChunk[]
+  
+  @@map("knowledge_documents")
 }
+
+// ---------------------------------------------------------------------------
+//  KnowledgeChunk - 文档分块（含向量嵌入）
+// ---------------------------------------------------------------------------
+model KnowledgeChunk {
+  id        String   @id @default(cuid())
+  document  KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentId String
+  
+  content   String   @db.Text
+  chunkIndex Int
+  embedding Unsupported("vector(1536)")?
+  
+  createdAt DateTime @default(now())
+  
+  @@index([documentId])
+  @@map("knowledge_chunks")
+}
+

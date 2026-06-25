@@ -1,0 +1,16 @@
+[33md2a45fa[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m feat(chatbubble): 在气泡中实时显示工具调用进度，改善chat输出抖动
+[33mf1c93b1[m feat(chat): 优化 AI 消息气泡交互 - 将工具调用提示与"AI 正在思考"合并为单个气泡 - 新增展开/收起按钮查看工具调用进度 - 替换 emoji 为 lucide-react 图标
+[33mb133398[m feat(tools_creatTask): tools调用与展示
+[33m09622cb[m feat(tools): createTask & searchKnowledgeBase
+[33ma7bd1bb[m feat(tools): saveProjectMemory
+[33m1e81ae7[m fix: 修复聊天界面
+[33m1268c9f[m feat(tools): getProjectContext
+[33m43cd0dd[m chore: 添加注释并修复一个小bug
+[33m1500bdd[m fix: 类型安全问题
+[33ma7f9dcd[m feat: 记忆系统redis + PostgreSQL
+[33m1354c55[m feat: add Project Context，Agent 可感知项目上下文
+[33ma0693c8[m feat: 聊天系统
+[33mc0949ae[m feat: 项目系统
+[33m448e6ba[m feat:用户管理session管理
+[33m4a355b8[m frat:用户系统（注册、登录）
+[33m6b72e2d[m chore: 初始化 monorepo 项目结构
