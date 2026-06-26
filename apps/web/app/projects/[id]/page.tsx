@@ -253,7 +253,7 @@ export default function ProjectDetailPage() {
         {/* 功能模块 */}
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-4">项目模块</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <button
               onClick={() => router.push(`/projects/${id}/context`)}
               className="border rounded-lg p-4 text-left hover:border-blue-300 hover:bg-blue-50 transition-colors"
@@ -282,7 +282,16 @@ export default function ProjectDetailPage() {
               </p>
             </button>
             <button
-              onClick={() => router.push(`/chat`)}
+              onClick={() => router.push(`/projects/${id}/knowledge`)}
+              className="border rounded-lg p-4 text-left hover:border-teal-300 hover:bg-teal-50 transition-colors"
+            >
+              <h3 className="font-medium text-teal-600">知识库</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                上传与管理项目文件
+              </p>
+            </button>
+            <button
+              onClick={() => router.push(`/chat?projectId=${id}`)}
               className="border rounded-lg p-4 text-left hover:border-orange-300 hover:bg-orange-50 transition-colors"
             >
               <h3 className="font-medium text-orange-600">AI 创业助手</h3>

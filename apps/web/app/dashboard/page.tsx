@@ -65,6 +65,24 @@ export default function DashboardPage() {
       {/* 主内容 */}
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
+          {/* 通用 AI 聊天入口 */}
+          <div className="bg-white rounded-lg shadow p-6 mb-6 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-purple-700">通用 AI 创业助手</h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  不归属任何项目，通用创业问题咨询与头脑风暴
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => router.push("/chat")}
+              className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 text-sm flex-shrink-0"
+            >
+              开始聊天
+            </button>
+          </div>
+
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold">我的项目</h2>
             <button
