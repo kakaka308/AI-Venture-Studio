@@ -4,6 +4,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { NextResponse } from "next/server";
 // @ts-expect-error - pdf-parse v2.x ESM 入口无 default 导出，但 bundler 运行时处理 CJS interop
 import pdf from "pdf-parse";
+import { processDocumentForRAG } from "@/lib/rag/chunkAndEmbed";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
@@ -17,32 +18,31 @@ const SUPPORTED_TYPES = {
   "text/x-markdown": "markdown",
 } as const;
 
-
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 最大文件大小 (10MB)
 
 // 解析文件内容
 async function parseFileContent(
   buffer: Buffer,
   fileType: string
-) : Promise<string> {
-  switch(fileType) {
-    case "pdf" : {
+): Promise<string> {
+  switch (fileType) {
+    case "pdf": {
       const data = await pdf(buffer);
       return data.text;
     }
 
-    case "markdown" : 
-    case "txt" :
+    case "markdown":
+    case "txt":
       return buffer.toString("utf-8");
 
-    default :
-    throw new Error(`不支持的文件类型: ${fileType}`);
+    default:
+      throw new Error(`不支持的文件类型: ${fileType}`);
   }
 }
 
 // 上传并解析知识库文件
 export async function POST(request: Request) {
-  try  {
+  try {
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -60,20 +60,20 @@ export async function POST(request: Request) {
     }
 
     const project = await prisma.project.findUnique({
-      where: { id : projectId },
-    })
+      where: { id: projectId },
+    });
     if (!project || project.userId !== session.user.id) {
       return NextResponse.json({ error: "项目不存在或无权限" }, { status: 403 });
     }
 
     const fileType = SUPPORTED_TYPES[file.type as keyof typeof SUPPORTED_TYPES];
 
-    let finaFileType = fileType;
-    if (!finaFileType) {
+    let finalFileType = fileType;
+    if (!finalFileType) {
       const ext = file.name.split(".").pop()?.toLowerCase();
-      if (ext === "pdf") finaFileType = "pdf";
-      else if (ext === "md" || ext === "markdown") finaFileType = "markdown";
-      else if (ext === "txt") finaFileType = "txt";
+      if (ext === "pdf") finalFileType = "pdf";
+      else if (ext === "md" || ext === "markdown") finalFileType = "markdown";
+      else if (ext === "txt") finalFileType = "txt";
       else return NextResponse.json({ error: "不支持的文件类型" }, { status: 400 });
     }
 
@@ -86,29 +86,42 @@ export async function POST(request: Request) {
 
     let content: string;
     try {
-      content = await parseFileContent(buffer, finaFileType);
+      content = await parseFileContent(buffer, finalFileType);
     } catch (parseError) {
       console.error("文件解析失败:", parseError);
-      return NextResponse.json({ error: "文件解析失败" },{ status: 400 });
+      return NextResponse.json({ error: "文件解析失败" }, { status: 400 });
     }
 
     const metadata = {
       originalName: file.name,
       mimeType: file.type || "application/octet-stream",
       uploadedAt: new Date().toISOString(),
-    }
+      fileSize: file.size,
+    };
 
+    // 创建文档记录
     const document = await prisma.knowledgeDocument.create({
       data: {
         fileName: file.name,
-        fileType: finaFileType,
+        fileType: finalFileType,
         fileSize: file.size,
         content: content,
         metadata: metadata,
         projectId: projectId,
+        chunksCount: 0,  // 初始为 0，处理完成后更新
       },
-    })
+    });
 
+    // 异步处理文档（不阻塞上传响应）
+    processDocumentForRAG(document.id, content)
+      .then(result => {
+        console.log(`[Upload] 文档 ${document.id} 处理${result.status}: ${result.chunksCount} 个块`);
+      })
+      .catch(error => {
+        console.error(`[Upload] 文档 ${document.id} 处理失败:`, error);
+      });
+
+    // 立即返回响应
     return NextResponse.json({
       success: true,
       document: {
@@ -118,11 +131,12 @@ export async function POST(request: Request) {
         fileSize: document.fileSize,
         createdAt: document.createdAt,
         contentLength: content.length,
+        status: "processing",  // 表示正在后台处理
       },
     });
 
-  } catch(err) {
-    console.error("文件上传失败", err); 
+  } catch (err) {
+    console.error("文件上传失败", err);
     return NextResponse.json(
       { error: "文件上传失败" },
       { status: 500 }
