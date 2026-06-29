@@ -9,10 +9,21 @@ export async function runWorkflow(input: {
   const initialState = {
     userInput: input.userInput,
     projectContext: input.projectContext,
+    // Agent 输出
     marketReport: "",
     productRequirements: "",
     architectureDesign: "",
+    databaseDesign: "",
     taskPlan: "",
+    riskAssessment: "",
+    // Multi-Agent 通信
+    agentMessages: [],
+    // Reviewer 反馈闭环
+    needsRevision: false,
+    revisionTarget: "",
+    revisionNotes: "",
+    revisionCount: 0,
+    // 运行状态
     currentStep: "start",
     errors: [],
     finalResult: "",

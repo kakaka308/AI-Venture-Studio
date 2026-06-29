@@ -4,7 +4,13 @@ import type { WorkflowState } from "../state";
 const llm = createLLM();
 
 export async function marketAgentNode(state: typeof WorkflowState.State) {
-  const { userInput, projectContext } = state;
+  const { userInput, projectContext, agentMessages } = state;
+
+  // 消费上游消息
+  const relevantMessages = (agentMessages || [])
+    .filter((m) => m.to === "market" || m.to === "all")
+    .map((m) => `[${m.from} → ${m.type}]: ${m.content}`)
+    .join("\n");
 
   const prompt = `
 你是一位资深市场分析师。请对以下创业项目进行市场分析。
@@ -14,6 +20,7 @@ ${JSON.stringify(projectContext, null, 2)}
 
 用户需求：
 ${userInput}
+${relevantMessages ? `\n其他 Agent 的提示：\n${relevantMessages}` : ""}
 
 请从以下维度输出分析报告：
 1. 市场规模与增长趋势
@@ -30,5 +37,14 @@ ${userInput}
   return {
     marketReport: result.content as string,
     currentStep: "market_done",
+    agentMessages: [
+      ...(agentMessages || []),
+      {
+        from: "market",
+        to: "pm",
+        type: "note" as const,
+        content: `市场分析完成。关键发现：目标市场规模、用户画像、竞争格局已输出，请基于此设计产品方案。`,
+      },
+    ],
   };
 }

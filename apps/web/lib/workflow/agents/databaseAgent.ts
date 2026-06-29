@@ -4,10 +4,27 @@ import type { WorkflowState } from "../state";
 const llm = createLLM();
 
 export async function databaseAgentNode(state: typeof WorkflowState.State) {
-  const { projectContext, productRequirements, architectureDesign } = state;
+  const {
+    projectContext,
+    productRequirements,
+    architectureDesign,
+    agentMessages,
+    revisionTarget,
+    revisionNotes,
+    revisionCount,
+  } = state;
+
+  const isRevision = revisionTarget === "database" && revisionCount > 0;
+
+  // 消费上游消息
+  const relevantMessages = (agentMessages || [])
+    .filter((m) => m.to === "database" || m.to === "all")
+    .map((m) => `[${m.from} → ${m.type}]: ${m.content}`)
+    .join("\n");
 
   const prompt = `
 你是一位资深数据库架构师。基于产品需求和技术架构，设计完整的数据库方案。
+${isRevision ? `\n⚠️ 这是第 ${revisionCount} 次修订。审核意见：${revisionNotes}\n请针对性地改进数据库设计。` : ""}
 
 项目信息：
 ${JSON.stringify(projectContext, null, 2)}
@@ -17,6 +34,7 @@ ${productRequirements}
 
 技术架构：
 ${architectureDesign}
+${relevantMessages ? `\n其他 Agent 的提示：\n${relevantMessages}` : ""}
 
 请从以下维度输出数据库设计文档：
 
@@ -51,5 +69,18 @@ ${architectureDesign}
   return {
     databaseDesign: result.content as string,
     currentStep: "database_done",
+    needsRevision: false,
+    revisionNotes: "",
+    agentMessages: [
+      ...(agentMessages || []),
+      {
+        from: "database",
+        to: "planning",
+        type: "note" as const,
+        content: isRevision
+          ? `数据库设计已完成第 ${revisionCount} 次修订。`
+          : `数据库设计完成。ER 图、表结构、索引已输出，请 Planning Agent 在开发计划中纳入数据库迁移任务。`,
+      },
+    ],
   };
 }

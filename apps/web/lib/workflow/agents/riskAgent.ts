@@ -11,10 +11,23 @@ export async function riskAgentNode(state: typeof WorkflowState.State) {
     architectureDesign,
     databaseDesign,
     taskPlan,
+    agentMessages,
+    revisionTarget,
+    revisionNotes,
+    revisionCount,
   } = state;
+
+  const isRevision = revisionTarget === "risk" && revisionCount > 0;
+
+  // 消费上游消息
+  const relevantMessages = (agentMessages || [])
+    .filter((m) => m.to === "risk" || m.to === "all")
+    .map((m) => `[${m.from} → ${m.type}]: ${m.content}`)
+    .join("\n");
 
   const prompt = `
 你是一位资深风险管理专家。基于项目的完整分析，输出全面的风险评估报告。
+${isRevision ? `\n⚠️ 这是第 ${revisionCount} 次修订。审核意见：${revisionNotes}\n请针对性地改进风险评估。` : ""}
 
 项目信息：
 ${JSON.stringify(projectContext, null, 2)}
@@ -33,6 +46,7 @@ ${databaseDesign || "暂无"}
 
 开发计划：
 ${taskPlan}
+${relevantMessages ? `\n其他 Agent 的提示：\n${relevantMessages}` : ""}
 
 请从以下维度输出风险评估报告：
 
@@ -73,5 +87,18 @@ ${taskPlan}
   return {
     riskAssessment: result.content as string,
     currentStep: "risk_done",
+    needsRevision: false,
+    revisionNotes: "",
+    agentMessages: [
+      ...(agentMessages || []),
+      {
+        from: "risk",
+        to: "reviewer",
+        type: "warning" as const,
+        content: isRevision
+          ? `风险评估已完成第 ${revisionCount} 次修订。`
+          : `风险评估完成。识别出关键技术风险和商业风险，请 Reviewer 综合审查全部输出。`,
+      },
+    ],
   };
 }
