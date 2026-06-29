@@ -3,7 +3,9 @@ import { WorkflowState } from "./state";
 import { marketAgentNode } from "./agents/marketAgent";
 import { pmAgentNode } from "./agents/pmAgent";
 import { architectAgentNode } from "./agents/architectAgent";
+import { databaseAgentNode } from "./agents/databaseAgent";
 import { planningAgentNode } from "./agents/planningAgent";
+import { riskAgentNode } from "./agents/riskAgent";
 
 /**
  * 构建 workflow 图
@@ -16,19 +18,30 @@ export function buildWorkflow() {
     .addNode("market", marketAgentNode)
     .addNode("pm", pmAgentNode)
     .addNode("architect", architectAgentNode)
+    .addNode("database", databaseAgentNode)
     .addNode("planning", planningAgentNode)
+    .addNode("risk", riskAgentNode)
     .addNode("summarize", summarizeNode)
     .addEdge(START, "market")
     .addEdge("market", "pm")
     .addEdge("pm", "architect")
-    .addEdge("architect", "planning")
-    .addEdge("planning", "summarize")
+    .addEdge("architect", "database")
+    .addEdge("database", "planning")
+    .addEdge("planning", "risk")
+    .addEdge("risk", "summarize")
     .addEdge("summarize", END)
     .compile();
 }
 
 async function summarizeNode(state: typeof WorkflowState.State) {
-  const { marketReport, productRequirements, architectureDesign, taskPlan } = state;
+  const {
+    marketReport,
+    productRequirements,
+    architectureDesign,
+    databaseDesign,
+    taskPlan,
+    riskAssessment,
+  } = state;
 
   const summary = `
 # 项目分析报告
@@ -42,8 +55,14 @@ ${productRequirements || "暂无数据"}
 ## 技术架构
 ${architectureDesign || "暂无数据"}
 
+## 数据库设计
+${databaseDesign || "暂无数据"}
+
 ## 开发计划
 ${taskPlan || "暂无数据"}
+
+## 风险评估
+${riskAssessment || "暂无数据"}
 `;
 
   return {

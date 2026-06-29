@@ -8,7 +8,9 @@ export const WorkflowState = Annotation.Root({
   marketReport: Annotation<string>(),
   productRequirements: Annotation<string>(),
   architectureDesign: Annotation<string>(),
+  databaseDesign: Annotation<string>(),
   taskPlan: Annotation<string>(),
+  riskAssessment: Annotation<string>(),
 
   currentStep: Annotation<string>(),
   errors: Annotation<string[]>(),
