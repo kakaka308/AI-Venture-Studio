@@ -52,8 +52,6 @@ ${relevantMessages ? `\n其他 Agent 的提示：\n${relevantMessages}` : ""}
   return {
     architectureDesign: result.content as string,
     currentStep: "architect_done",
-    needsRevision: false,
-    revisionNotes: "",
     agentMessages: [
       ...(agentMessages || []),
       {

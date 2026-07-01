@@ -7,6 +7,7 @@ import { databaseAgentNode } from "./agents/databaseAgent";
 import { planningAgentNode } from "./agents/planningAgent";
 import { riskAgentNode } from "./agents/riskAgent";
 import { reviewerAgentNode } from "./agents/reviewerAgent";
+import { wrapAgentWithObservability } from "@/lib/observability/wrap-agent";
 
 /**
  * 构建 Multi-Agent Workflow 图
@@ -26,17 +27,35 @@ import { reviewerAgentNode } from "./agents/reviewerAgent";
  *   2. reviewer 质量审查 + 条件路由回退
  *   3. Agent 间通过 agentMessages 通信
  */
-export function buildWorkflow() {
+export function buildWorkflow(traceId?: string, conversationId?: string) {
+  const opts = { traceId: traceId || "workflow", conversationId };
+
   return new StateGraph(WorkflowState)
-    // --- 注册所有节点 ---
-    .addNode("market", marketAgentNode)
-    .addNode("pm", pmAgentNode)
-    .addNode("architect", architectAgentNode)
-    .addNode("database", databaseAgentNode)
-    .addNode("planning", planningAgentNode)
-    .addNode("risk", riskAgentNode)
-    .addNode("reviewer", reviewerAgentNode)
-    .addNode("summarize", summarizeNode)
+    // --- 注册所有节点（带可观测性包装）---
+    .addNode("market", traceId
+      ? wrapAgentWithObservability(marketAgentNode, "market", opts)
+      : marketAgentNode)
+    .addNode("pm", traceId
+      ? wrapAgentWithObservability(pmAgentNode, "pm", opts)
+      : pmAgentNode)
+    .addNode("architect", traceId
+      ? wrapAgentWithObservability(architectAgentNode, "architect", opts)
+      : architectAgentNode)
+    .addNode("database", traceId
+      ? wrapAgentWithObservability(databaseAgentNode, "database", opts)
+      : databaseAgentNode)
+    .addNode("planning", traceId
+      ? wrapAgentWithObservability(planningAgentNode, "planning", opts)
+      : planningAgentNode)
+    .addNode("risk", traceId
+      ? wrapAgentWithObservability(riskAgentNode, "risk", opts)
+      : riskAgentNode)
+    .addNode("reviewer", traceId
+      ? wrapAgentWithObservability(reviewerAgentNode, "reviewer", opts)
+      : reviewerAgentNode)
+    .addNode("summarize", traceId
+      ? wrapAgentWithObservability(summarizeNode, "summarize", opts)
+      : summarizeNode)
 
     // --- 顺序阶段 ---
     .addEdge(START, "market")

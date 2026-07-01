@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { PrismaClient } from "@ai-venture/db";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { runWorkflow } from "@/lib/workflow/runner";
+import { observabilityBus } from "@/lib/observability/event-bus";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
@@ -31,8 +32,27 @@ export async function POST(req: NextRequest) {
       }
     : {};
 
+  // 生成可观测性追踪 ID
+  const traceId = `workflow_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const workflowStartTime = Date.now();
+
+  // 发射工作流开始事件
+  observabilityBus.emitEvent({
+    type: "workflow:start",
+    traceId,
+    conversationId: projectId,
+    timestamp: workflowStartTime,
+    model: "qwen3.6-flash",
+    runtime: "通义千问 DashScope / Qwen3.6-Flash · Node.js · Multi-Agent",
+  });
+
   // 运行 Workflow（流式返回）
-  const stream = await runWorkflow({ userInput, projectContext });
+  const stream = await runWorkflow({
+    userInput,
+    projectContext,
+    traceId,
+    conversationId: projectId,
+  });
 
   // 用 ReadableStream 包装，实现 SSE
   const readable = new ReadableStream({
@@ -43,6 +63,19 @@ export async function POST(req: NextRequest) {
         const data = JSON.stringify(event);
         controller.enqueue(encoder.encode(`data: ${data}\n\n`));
       }
+
+      // 发射工作流完成事件
+      const totalDuration = Date.now() - workflowStartTime;
+      observabilityBus.emitEvent({
+        type: "workflow:end",
+        traceId,
+        conversationId: projectId,
+        timestamp: Date.now(),
+        totalDuration,
+        model: "qwen3.6-flash",
+        runtime: "通义千问 DashScope / Qwen3.6-Flash · Node.js · Multi-Agent",
+      });
+
       controller.close();
     },
   });

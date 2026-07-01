@@ -20,14 +20,23 @@ export const WorkflowState = Annotation.Root({
     default: () => [],
   }),
 
-  // Reviewer 反馈闭环相关
-  needsRevision: Annotation<boolean>(),
+  // Reviewer 反馈闭环相关（支持并行写入）
+  needsRevision: Annotation<boolean>({
+    reducer: (_, update) => update ?? _,
+    default: () => false,
+  }),
   revisionTarget: Annotation<string>(),
-  revisionNotes: Annotation<string>(),
+  revisionNotes: Annotation<string>({
+    reducer: (_, update) => update ?? _,
+    default: () => "",
+  }),
   revisionCount: Annotation<number>(),
 
-  // 运行状态
-  currentStep: Annotation<string>(),
+  // 运行状态（支持并行分支写入，如 architect + database 并发）
+  currentStep: Annotation<string>({
+    reducer: (_, update) => update ?? _,
+    default: () => "",
+  }),
   errors: Annotation<string[]>({
     reducer: (current, update) => [...(current || []), ...(update || [])],
     default: () => [],

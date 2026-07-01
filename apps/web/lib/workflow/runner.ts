@@ -1,14 +1,21 @@
 import { buildWorkflow } from "./orchestrator";
 
-export async function runWorkflow(input: {
+export interface RunWorkflowOptions {
   userInput: string;
   projectContext: Record<string, unknown>;
-}) {
-  const workflow = buildWorkflow();
+  /** 可观测性追踪 ID */
+  traceId?: string;
+  /** 对话 ID */
+  conversationId?: string;
+}
+
+export async function runWorkflow(input: RunWorkflowOptions) {
+  const { userInput, projectContext, traceId, conversationId } = input;
+  const workflow = buildWorkflow(traceId, conversationId);
 
   const initialState = {
-    userInput: input.userInput,
-    projectContext: input.projectContext,
+    userInput,
+    projectContext,
     // Agent 输出
     marketReport: "",
     productRequirements: "",
@@ -36,3 +43,4 @@ export async function runWorkflow(input: {
 
   return stream;
 }
+

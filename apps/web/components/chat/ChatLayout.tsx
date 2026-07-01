@@ -8,6 +8,19 @@ import Link from "next/link";
 import ConversationList, { type Conversation } from "./ConversationList";
 import MessageList from "./MessageList";
 import ChatInput from "./ChatInput";
+import { useObservability } from "@/lib/observability/useObservability";
+
+/** Agent 中文名称映射 */
+const AGENT_LABELS: Record<string, string> = {
+  market: "市场分析",
+  pm: "产品需求",
+  architect: "技术架构",
+  database: "数据库设计",
+  planning: "开发计划",
+  risk: "风险评估",
+  reviewer: "质量审查",
+  summarize: "报告汇总",
+};
 
 export default function ChatLayout() {
   const searchParams = useSearchParams();
@@ -103,6 +116,133 @@ export default function ChatLayout() {
 
 
   const isLoading = status === "submitted" || status === "streaming";
+
+  // --- Multi-Agent 工作流状态 ---
+  const [workflowRunning, setWorkflowRunning] = useState(false);
+  const [workflowProgress, setWorkflowProgress] = useState<
+    Record<string, { status: string; duration?: number; tokens?: number }>
+  >({});
+  const workflowAbortRef = useRef<AbortController | null>(null);
+
+  /**
+   * 启动 Multi-Agent 工作流
+   * 调用 /api/workflow 并通过 SSE 接收每个 Agent 节点的实时状态
+   */
+  const runWorkflow = useCallback(async () => {
+    if (workflowRunning || !projectId) return;
+
+    const abort = new AbortController();
+    workflowAbortRef.current = abort;
+
+    // 初始化所有节点为 pending
+    const init: Record<string, { status: string }> = {};
+    Object.keys(AGENT_LABELS).forEach((key) => {
+      init[key] = { status: "pending" };
+    });
+    setWorkflowProgress(init);
+    setWorkflowRunning(true);
+
+    try {
+      const res = await fetch("/api/workflow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userInput: `请对项目 "${projectName || projectId?.slice(0, 8)}" 进行完整的 Multi-Agent 分析`,
+          projectId,
+        }),
+        signal: abort.signal,
+      });
+
+      if (!res.ok) {
+        throw new Error(`Workflow API 返回 ${res.status}`);
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("无法读取响应流");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6);
+
+          try {
+            const event = JSON.parse(jsonStr);
+            const eventName: string = event.event || event.name || "";
+            const nodeName: string = event.name || event.metadata?.langgraph_node || "";
+
+            if (!nodeName) continue;
+
+            // Agent 开始
+            if (eventName.includes("start") || eventName === "on_chain_start") {
+              setWorkflowProgress((prev) => ({
+                ...prev,
+                [nodeName]: { status: "running" },
+              }));
+            }
+
+            // Agent 完成
+            if (eventName.includes("end") || eventName === "on_chain_end") {
+              setWorkflowProgress((prev) => ({
+                ...prev,
+                [nodeName]: {
+                  status: "success",
+                  duration: event.data?.duration,
+                  tokens: event.data?.tokens,
+                },
+              }));
+            }
+          } catch {
+            // 跳过解析失败的行
+          }
+        }
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      console.error("[ChatLayout] 工作流执行失败:", err);
+
+      setWorkflowProgress((prev) => {
+        const next = { ...prev };
+        for (const key of Object.keys(next)) {
+          if (next[key].status === "running") {
+            next[key] = { status: "error" };
+          }
+        }
+        return next;
+      });
+    } finally {
+      setWorkflowRunning(false);
+      workflowAbortRef.current = null;
+      refreshConversations();
+    }
+  }, [workflowRunning, projectId, projectName, refreshConversations]);
+
+  // 组件卸载时取消工作流
+  useEffect(() => {
+    return () => {
+      workflowAbortRef.current?.abort();
+    };
+  }, []);
+
+  // 可观测性 WebSocket 连接
+  const {
+    currentTrace,
+    events: observabilityEvents,
+    connected: observabilityConnected,
+  } = useObservability({
+    conversationId,
+    projectId,
+    enabled: isLoading,
+  });
 
   // --- Initialize: auto-select or auto-create a conversation ---
   useEffect(() => {
@@ -333,7 +473,15 @@ export default function ChatLayout() {
               </p>
             </div>
           ) : (
-            <MessageList messages={messages} isLoading={isLoading} />
+            <MessageList
+              messages={messages}
+              isLoading={isLoading}
+              observabilityTrace={currentTrace}
+              observabilityEvents={observabilityEvents}
+              observabilityConnected={observabilityConnected}
+              workflowRunning={workflowRunning}
+              workflowProgress={workflowProgress}
+            />
           )}
         </div>
 
@@ -351,6 +499,9 @@ export default function ChatLayout() {
           handleSubmit={onFormSubmit}
           isLoading={isLoading}
           disabled={false}
+          showWorkflowButton={!!projectId}
+          workflowRunning={workflowRunning}
+          onRunWorkflow={runWorkflow}
         />
       </main>
     </div>

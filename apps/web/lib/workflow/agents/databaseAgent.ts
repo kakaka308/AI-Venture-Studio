@@ -69,8 +69,6 @@ ${relevantMessages ? `\n其他 Agent 的提示：\n${relevantMessages}` : ""}
   return {
     databaseDesign: result.content as string,
     currentStep: "database_done",
-    needsRevision: false,
-    revisionNotes: "",
     agentMessages: [
       ...(agentMessages || []),
       {

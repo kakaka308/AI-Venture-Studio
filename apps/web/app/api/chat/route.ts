@@ -21,6 +21,8 @@ import { getProjectContext } from "@/lib/tools/getProjectContext";
 import { saveProjectMemory } from "@/lib/tools/saveProjectMemory";
 import { createTask } from "@/lib/tools/createTask";
 import { searchKnowledgeBase } from "@/lib/tools/searchKnowledgeBase";
+import { observabilityBus } from "@/lib/observability/event-bus";
+import { wrapToolWithObservability } from "@/lib/observability/wrap-tool";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
@@ -190,6 +192,20 @@ export async function POST(req: NextRequest) {
 - 不确定时：使用 hybrid 模式（默认）
 `;
 
+  // 生成可观测性追踪 ID
+  const traceId = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const chatStartTime = Date.now();
+
+  // 发射对话开始事件
+  observabilityBus.emitEvent({
+    type: "chat:start",
+    traceId,
+    conversationId,
+    timestamp: chatStartTime,
+    model: "qwen3.6-flash",
+    runtime: "通义千问 DashScope / Qwen3.6-Flash · Node.js",
+  });
+
   // 调用 AI 模型（流式），完成后保存 AI 回复并更新记忆
   console.log("[Chat API] 开始调用模型:", "qwen3.6-flash", "消息数:", messages.length);
   try {
@@ -206,16 +222,30 @@ export async function POST(req: NextRequest) {
           },
         },
       },
-      // 工具配置 
+      // 工具配置（带可观测性包装，追踪每次工具调用的耗时、参数和结果）
       tools: {
-        getProjectContext: getProjectContext(prisma),
-        saveProjectMemory: saveProjectMemory(prisma),
-        createTask: createTask(prisma),
-        searchKnowledgeBase: searchKnowledgeBase(prisma),
+        getProjectContext: wrapToolWithObservability(getProjectContext(prisma), "getProjectContext", { traceId, conversationId }),
+        saveProjectMemory: wrapToolWithObservability(saveProjectMemory(prisma), "saveProjectMemory", { traceId, conversationId }),
+        createTask: wrapToolWithObservability(createTask(prisma), "createTask", { traceId, conversationId }),
+        searchKnowledgeBase: wrapToolWithObservability(searchKnowledgeBase(prisma), "searchKnowledgeBase", { traceId, conversationId }),
       },
       stopWhen: stepCountIs(3),
-      onFinish: async ({ text }) => {
+      onFinish: async ({ text, usage }) => {
         console.log("[Chat API] 模型返回完成，响应长度:", text?.length);
+        const totalDuration = Date.now() - chatStartTime;
+
+        // 发射对话完成事件
+        observabilityBus.emitEvent({
+          type: "chat:end",
+          traceId,
+          conversationId,
+          timestamp: Date.now(),
+          totalDuration,
+          totalTokens: usage?.totalTokens || 0,
+          model: "qwen3.6-flash",
+          runtime: "通义千问 DashScope / Qwen3.6-Flash · Node.js",
+        });
+
         try {
           await prisma.message.create({
             data: {
