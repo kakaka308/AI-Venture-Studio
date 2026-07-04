@@ -104,9 +104,28 @@ ${riskAssessment || "缺失"}
   try {
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     review = JSON.parse(jsonMatch?.[0] || "{}");
-  } catch {
-    // 解析失败则默认通过
-    review = { scores: {}, overallScore: 8, passThreshold: 7, passed: true, issues: [] };
+  } catch (parseErr) {
+    // 解析失败：记录日志并标记为需要修订
+    console.error(
+      `[Reviewer] JSON 解析失败（第 ${passCount + 1} 轮）:`,
+      parseErr instanceof Error ? parseErr.message : parseErr,
+    );
+    console.error("[Reviewer] 原始输出 (前 500 字符):", text.slice(0, 500));
+    review = {
+      scores: {},
+      overallScore: 0,
+      passThreshold: 7,
+      passed: false,
+      issues: [
+        {
+          severity: "critical",
+          section: "productRequirements",
+          description: `Reviewer 输出格式异常，无法解析 JSON。原始输出前 200 字: ${text.slice(0, 200)}`,
+        },
+      ],
+      revisionTarget: "pm",
+      revisionNotes: "Reviewer JSON 解析失败，请各 Agent 重新生成以确保输出质量。",
+    };
   }
 
   const needsRevision = !review.passed && passCount < 2;

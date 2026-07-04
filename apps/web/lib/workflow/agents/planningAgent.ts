@@ -1,5 +1,6 @@
 import { createLLM } from "../llm";
 import type { WorkflowState } from "../state";
+import { manageContext } from "../context";
 
 const llm = createLLM();
 
@@ -23,21 +24,33 @@ export async function planningAgentNode(state: typeof WorkflowState.State) {
     .map((m) => `[${m.from} → ${m.type}]: ${m.content}`)
     .join("\n");
 
+  // 上下文压缩（planning 也接收 4 份上游输出）
+  const { sections: compressed } = manageContext(
+    [
+      { label: "市场分析", content: marketReport },
+      { label: "产品需求", content: productRequirements },
+      { label: "技术架构", content: architectureDesign },
+      { label: "数据库设计", content: databaseDesign },
+    ],
+    1500
+  );
+  const ctxMap = Object.fromEntries(compressed.map((s) => [s.label, s.content]));
+
   const prompt = `
 你是一位资深技术项目经理。基于前面的分析，制定详细的开发计划。
 ${isRevision ? `\n⚠️ 这是第 ${revisionCount} 次修订。审核意见：${revisionNotes}\n请针对性地改进开发计划。` : ""}
 
 市场分析：
-${marketReport}
+${ctxMap["市场分析"]}
 
 产品需求：
-${productRequirements}
+${ctxMap["产品需求"]}
 
 技术架构：
-${architectureDesign}
+${ctxMap["技术架构"]}
 
 数据库设计：
-${databaseDesign}
+${ctxMap["数据库设计"]}
 ${relevantMessages ? `\n其他 Agent 的提示：\n${relevantMessages}` : ""}
 
 请输出：

@@ -58,25 +58,140 @@ export async function POST(req: NextRequest) {
   const readable = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
-      for await (const event of stream) {
-        // 每个事件包含节点名称和内容
-        const data = JSON.stringify(event);
-        controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+      let finalResult = ""; // 收集 summarize 节点的最终报告
+      const allAgentOutputs: Record<string, string> = {}; // 收集所有 Agent 的输出
+      try {
+        for await (const event of stream) {
+          const nodeName =
+            event.metadata?.langgraph_node || event.name || "";
+
+          // 收集所有 Agent 节点的输出（用于兜底构建最终报告）
+          if (
+            event.event === "on_chain_end" &&
+            nodeName &&
+            nodeName !== "start" &&
+            nodeName !== "__start__"
+          ) {
+            const output = event.data?.output;
+            if (output && typeof output === "object") {
+              // 记录该节点的所有字符串字段
+              for (const [key, val] of Object.entries(output)) {
+                if (
+                  typeof val === "string" &&
+                  val.length > 20 &&
+                  !["currentStep", "revisionTarget"].includes(key)
+                ) {
+                  allAgentOutputs[key] = val as string;
+                }
+              }
+            }
+          }
+
+          // 捕获 summarize 节点的输出作为最终报告
+          // LangGraph streamEvents v2 中，普通节点的 state 更新在 on_chain_end 事件里
+          // 尝试多种路径：event.name、metadata.langgraph_node
+          const isSummarizeEnd =
+            event.event === "on_chain_end" &&
+            (event.name === "summarize" ||
+              event.metadata?.langgraph_node === "summarize");
+
+          if (isSummarizeEnd) {
+            const output = event.data?.output;
+            // 尝试多种可能的嵌套路径
+            const result =
+              output?.finalResult ||
+              output?.output?.finalResult ||
+              "";
+
+            if (result) {
+              finalResult = result as string;
+              console.log(
+                `[Workflow] ✅ 捕获 summarize 最终报告，长度: ${finalResult.length} 字符`
+              );
+            } else {
+              // 调试：打印 summarize 事件结构以排查问题
+              console.log(
+                `[Workflow] ⚠️ summarize 节点完成但未找到 finalResult:`,
+                "事件类型:", event.event,
+                "output keys:", output ? Object.keys(output) : "null",
+                "output 预览:", JSON.stringify(output).slice(0, 300)
+              );
+            }
+          }
+
+          // 每个事件包含节点名称和内容
+          const data = JSON.stringify(event);
+          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+        }
+
+        // 兜底：如果未能从 summarize 节点捕获到 finalResult，用所有 Agent 输出自行构建报告
+        if (!finalResult && Object.keys(allAgentOutputs).length > 0) {
+          console.log(
+            `[Workflow] ⚠️ 未捕获到 summarize 节点的 finalResult，使用各 Agent 输出构建报告`
+          );
+          const fallbackReport = buildFallbackReport(allAgentOutputs);
+          if (fallbackReport) {
+            finalResult = fallbackReport;
+          }
+        }
+
+        // 发送最终报告给前端（Multi-Agent 分析的核心输出）
+        if (finalResult) {
+          console.log(
+            `[Workflow] 📤 发送 workflow_result 事件，报告长度: ${finalResult.length} 字符`
+          );
+          const resultEvent = JSON.stringify({
+            event: "workflow_result",
+            data: { content: finalResult },
+          });
+          controller.enqueue(encoder.encode(`data: ${resultEvent}\n\n`));
+        } else {
+          console.warn(
+            `[Workflow] ⚠️ 无法构建最终报告 - 所有 Agent 输出均为空`
+          );
+        }
+
+        // 发射工作流完成事件
+        const totalDuration = Date.now() - workflowStartTime;
+        observabilityBus.emitEvent({
+          type: "workflow:end",
+          traceId,
+          conversationId: projectId,
+          timestamp: Date.now(),
+          totalDuration,
+          model: "qwen3.6-flash",
+          runtime: "通义千问 DashScope / Qwen3.6-Flash · Node.js · Multi-Agent",
+        });
+
+        controller.close();
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error(`[Workflow] 工作流执行异常 (traceId=${traceId}):`, err);
+
+        // 发送错误事件给前端
+        const errorEvent = JSON.stringify({
+          name: "error",
+          event: "workflow_error",
+          data: { message: errorMessage, traceId },
+        });
+        controller.enqueue(encoder.encode(`data: ${errorEvent}\n\n`));
+
+        // 发射工作流结束事件（带错误标记）
+        const totalDuration = Date.now() - workflowStartTime;
+        observabilityBus.emitEvent({
+          type: "workflow:end",
+          traceId,
+          conversationId: projectId,
+          timestamp: Date.now(),
+          totalDuration,
+          model: "qwen3.6-flash",
+          runtime: "通义千问 DashScope / Qwen3.6-Flash · Node.js · Multi-Agent",
+          error: errorMessage,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any);
+
+        controller.close();
       }
-
-      // 发射工作流完成事件
-      const totalDuration = Date.now() - workflowStartTime;
-      observabilityBus.emitEvent({
-        type: "workflow:end",
-        traceId,
-        conversationId: projectId,
-        timestamp: Date.now(),
-        totalDuration,
-        model: "qwen3.6-flash",
-        runtime: "通义千问 DashScope / Qwen3.6-Flash · Node.js · Multi-Agent",
-      });
-
-      controller.close();
     },
   });
 
@@ -87,4 +202,40 @@ export async function POST(req: NextRequest) {
       Connection: "keep-alive",
     },
   });
+}
+
+/**
+ * 兜底函数：当无法从 summarize 节点捕获 finalResult 时，
+ * 用各 Agent 的输出自行拼接报告
+ */
+function buildFallbackReport(outputs: Record<string, string>): string {
+  const sections: { title: string; content: string }[] = [];
+
+  const mapping: Record<string, string> = {
+    marketReport: "市场分析",
+    productRequirements: "产品需求",
+    architectureDesign: "技术架构",
+    databaseDesign: "数据库设计",
+    taskPlan: "开发计划",
+    riskAssessment: "风险评估",
+  };
+
+  for (const [key, title] of Object.entries(mapping)) {
+    if (outputs[key]) {
+      sections.push({ title, content: outputs[key] });
+    }
+  }
+
+  if (sections.length === 0) return "";
+
+  let report = `# 项目分析报告\n\n`;
+  for (const { title, content } of sections) {
+    report += `## ${title}\n${content}\n\n`;
+  }
+
+  if (outputs["agentMessages"]) {
+    report += `---\n\n## Agent 协作日志\n${outputs["agentMessages"]}\n`;
+  }
+
+  return report;
 }

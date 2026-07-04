@@ -99,17 +99,18 @@ export function useObservability({
 
       ws.onclose = () => {
         setConnected(false);
+        console.log("[Observability] WebSocket 已断开，3 秒后尝试重连...");
         // 断线重连（通过 ref 引用避免循环依赖）
         reconnectTimer.current = setTimeout(() => {
           connectRef.current?.();
         }, 3000);
       };
 
-      ws.onerror = () => {
-        // 静默处理错误
+      ws.onerror = (e) => {
+        console.warn("[Observability] WebSocket 连接错误:", e);
       };
-    } catch {
-      // 连接失败
+    } catch (err) {
+      console.warn("[Observability] WebSocket 连接失败:", err instanceof Error ? err.message : err);
     }
   }, [enabled, conversationId, projectId, wsPort]);
 

@@ -219,7 +219,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
     >
       {/* 头像 - AI 助手 */}
       {!isUser && (
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shrink-0">
+        <div className="w-8 h-8 rounded-full bg-linear-to-br from-blue-500 to-purple-600 flex items-center justify-center shrink-0">
           <svg
             width="14"
             height="14"

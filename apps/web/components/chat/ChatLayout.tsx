@@ -8,6 +8,7 @@ import Link from "next/link";
 import ConversationList, { type Conversation } from "./ConversationList";
 import MessageList from "./MessageList";
 import ChatInput from "./ChatInput";
+import WorkflowReportCard from "./WorkflowReportCard";
 import { useObservability } from "@/lib/observability/useObservability";
 
 /** Agent 中文名称映射 */
@@ -122,6 +123,7 @@ export default function ChatLayout() {
   const [workflowProgress, setWorkflowProgress] = useState<
     Record<string, { status: string; duration?: number; tokens?: number }>
   >({});
+  const [workflowResultContent, setWorkflowResultContent] = useState<string | null>(null);
   const workflowAbortRef = useRef<AbortController | null>(null);
 
   /**
@@ -140,6 +142,7 @@ export default function ChatLayout() {
       init[key] = { status: "pending" };
     });
     setWorkflowProgress(init);
+    setWorkflowResultContent(null); // 清空上一次的结果
     setWorkflowRunning(true);
 
     try {
@@ -177,7 +180,36 @@ export default function ChatLayout() {
 
           try {
             const event = JSON.parse(jsonStr);
+
+            // 处理最终报告事件（Multi-Agent 分析的核心输出）
             const eventName: string = event.event || event.name || "";
+            if (eventName === "workflow_result") {
+              const content = event.data?.content || "";
+              if (content) {
+                console.log("[ChatLayout] ✅ 收到 Multi-Agent 分析报告, 长度:", content.length);
+                setWorkflowResultContent(content);
+              } else {
+                console.warn("[ChatLayout] ⚠️ workflow_result 事件中 content 为空");
+              }
+              continue;
+            }
+
+            // 处理显式的错误事件（workflow route 的 catch 块发送）
+            if (eventName === "workflow_error") {
+              const errorMsg = event.data?.message || "未知错误";
+              console.error("[ChatLayout] 工作流错误:", errorMsg);
+              setWorkflowProgress((prev) => {
+                const next = { ...prev };
+                for (const key of Object.keys(next)) {
+                  if (next[key].status === "running" || next[key].status === "pending") {
+                    next[key] = { status: "error" };
+                  }
+                }
+                return next;
+              });
+              continue;
+            }
+
             const nodeName: string = event.name || event.metadata?.langgraph_node || "";
 
             if (!nodeName) continue;
@@ -202,7 +234,11 @@ export default function ChatLayout() {
               }));
             }
           } catch {
-            // 跳过解析失败的行
+            // 跳过解析失败的行（记录警告方便调试）
+            console.warn(
+              "[ChatLayout] SSE 解析失败，跳过该行:",
+              jsonStr.slice(0, 150),
+            );
           }
         }
       }
@@ -220,6 +256,25 @@ export default function ChatLayout() {
         return next;
       });
     } finally {
+      // 兜底：确保所有还在 running 的节点被标记为 error
+      // 当 SSE stream 因异常中断（非 AbortError、非 catch 块捕获）时，这里做最后的清理
+      setWorkflowProgress((prev) => {
+        const next = { ...prev };
+        let hasRunning = false;
+        for (const key of Object.keys(next)) {
+          if (next[key].status === "running") {
+            next[key] = { status: "error" };
+            hasRunning = true;
+          }
+        }
+        if (hasRunning) {
+          console.warn(
+            "[ChatLayout] finally 兜底：以下节点因流中断被标记为 error:",
+            Object.keys(next).filter((k) => next[k].status === "error"),
+          );
+        }
+        return hasRunning ? next : prev;
+      });
       setWorkflowRunning(false);
       workflowAbortRef.current = null;
       refreshConversations();
@@ -243,6 +298,16 @@ export default function ChatLayout() {
     projectId,
     enabled: isLoading,
   });
+
+  // 调试：追踪报告卡片渲染条件
+  useEffect(() => {
+    console.log(
+      `[ChatLayout] 渲染状态: messages=${messages.length}, workflowResult=${!!workflowResultContent}, workflowRunning=${workflowRunning}`,
+      workflowResultContent
+        ? `报告前50字: ${workflowResultContent.slice(0, 50)}...`
+        : ""
+    );
+  }, [messages.length, workflowResultContent, workflowRunning]);
 
   // --- Initialize: auto-select or auto-create a conversation ---
   useEffect(() => {
@@ -452,7 +517,7 @@ export default function ChatLayout() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto">
-          {messages.length === 0 ? (
+          {messages.length === 0 && !workflowResultContent ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-600 px-4">
               <svg
                 width="48"
@@ -473,15 +538,21 @@ export default function ChatLayout() {
               </p>
             </div>
           ) : (
-            <MessageList
-              messages={messages}
-              isLoading={isLoading}
-              observabilityTrace={currentTrace}
-              observabilityEvents={observabilityEvents}
-              observabilityConnected={observabilityConnected}
-              workflowRunning={workflowRunning}
-              workflowProgress={workflowProgress}
-            />
+            <div>
+              <MessageList
+                messages={messages}
+                isLoading={isLoading}
+                observabilityTrace={currentTrace}
+                observabilityEvents={observabilityEvents}
+                observabilityConnected={observabilityConnected}
+                workflowRunning={workflowRunning}
+                workflowProgress={workflowProgress}
+              />
+              {/* Multi-Agent 分析报告：workflow 完成后始终显示 */}
+              {workflowResultContent && !workflowRunning && (
+                <WorkflowReportCard content={workflowResultContent} />
+              )}
+            </div>
           )}
         </div>
 
