@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-:root {
+::root {
   --background: #ffffff;
   --foreground: #171717;
 }
@@ -23,4 +23,44 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ========== 打印 PDF 样式 ========== */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 12px;
+  }
+
+  /* 隐藏侧边栏、头部栏、输入框、导航 */
+  aside,
+  header,
+  nav,
+  button.print\:hidden {
+    display: none !important;
+  }
+
+  /* 主内容区全宽无滚动 */
+  main {
+    flex: 1 !important;
+    overflow: visible !important;
+    border: none !important;
+  }
+
+  .overflow-y-auto,
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  /* 移除所有阴影 */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  @page {
+    margin: 1.5cm;
+    size: A4;
+  }
 }

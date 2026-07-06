@@ -178,6 +178,9 @@ export default function ChatLayout() {
           if (!line.startsWith("data: ")) continue;
           const jsonStr = line.slice(6);
 
+          // 跳过空行
+          if (!jsonStr.trim()) continue;
+
           try {
             const event = JSON.parse(jsonStr);
 
@@ -185,8 +188,17 @@ export default function ChatLayout() {
             const eventName: string = event.event || event.name || "";
             if (eventName === "workflow_result") {
               const content = event.data?.content || "";
+              console.log(
+                "[ChatLayout] 📥 收到 workflow_result 事件",
+                "event keys:",
+                Object.keys(event),
+                "data keys:",
+                event.data ? Object.keys(event.data) : "null",
+                "content 长度:",
+                content.length,
+              );
               if (content) {
-                console.log("[ChatLayout] ✅ 收到 Multi-Agent 分析报告, 长度:", content.length);
+                console.log("[ChatLayout] ✅ 设置 Multi-Agent 分析报告, 长度:", content.length);
                 setWorkflowResultContent(content);
               } else {
                 console.warn("[ChatLayout] ⚠️ workflow_result 事件中 content 为空");
@@ -233,11 +245,18 @@ export default function ChatLayout() {
                 },
               }));
             }
-          } catch {
-            // 跳过解析失败的行（记录警告方便调试）
-            console.warn(
-              "[ChatLayout] SSE 解析失败，跳过该行:",
-              jsonStr.slice(0, 150),
+          } catch (parseErr) {
+            // 不要静默吞掉解析错误，输出详细信息便于排查
+            console.error(
+              "[ChatLayout] ❌ SSE JSON 解析失败",
+              "错误:",
+              parseErr instanceof Error ? parseErr.message : String(parseErr),
+              "行长度:",
+              jsonStr.length,
+              "行前 200 字:",
+              jsonStr.slice(0, 200),
+              "行后 100 字:",
+              jsonStr.slice(-100),
             );
           }
         }
@@ -302,12 +321,27 @@ export default function ChatLayout() {
   // 调试：追踪报告卡片渲染条件
   useEffect(() => {
     console.log(
-      `[ChatLayout] 渲染状态: messages=${messages.length}, workflowResult=${!!workflowResultContent}, workflowRunning=${workflowRunning}`,
+      `[ChatLayout] 渲染状态: messages=${messages.length}, workflowResult=${!!workflowResultContent}, workflowRunning=${workflowRunning}, workflowResult 类型=${typeof workflowResultContent}`,
       workflowResultContent
         ? `报告前50字: ${workflowResultContent.slice(0, 50)}...`
         : ""
     );
   }, [messages.length, workflowResultContent, workflowRunning]);
+
+  // 工作流报告生成后，自动滚动到底部
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (workflowResultContent && !workflowRunning) {
+      // 延迟滚动，等待 React 渲染完成
+      const timer = setTimeout(() => {
+        chatContainerRef.current?.scrollTo({
+          top: chatContainerRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [workflowResultContent, workflowRunning]);
 
   // --- Initialize: auto-select or auto-create a conversation ---
   useEffect(() => {
@@ -516,7 +550,7 @@ export default function ChatLayout() {
         </header>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto">
+        <div ref={chatContainerRef} className="flex-1 overflow-y-auto">
           {messages.length === 0 && !workflowResultContent ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-600 px-4">
               <svg
@@ -549,9 +583,13 @@ export default function ChatLayout() {
                 workflowProgress={workflowProgress}
               />
               {/* Multi-Agent 分析报告：workflow 完成后始终显示 */}
-              {workflowResultContent && !workflowRunning && (
+              {workflowResultContent && !workflowRunning ? (
                 <WorkflowReportCard content={workflowResultContent} />
-              )}
+              ) : workflowResultContent && workflowRunning ? (
+                <div className="max-w-3xl mx-auto px-4 py-4 text-center text-sm text-gray-400">
+                  分析报告已生成，正在渲染...
+                </div>
+              ) : null}
             </div>
           )}
         </div>
