@@ -1,5 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
 import type { AgentMessage } from "./messages";
+import type { QualityReport } from "./evaluation/types";
 
 // workflow 全局状态
 export const WorkflowState = Annotation.Root({
@@ -31,6 +32,12 @@ export const WorkflowState = Annotation.Root({
     default: () => "",
   }),
   revisionCount: Annotation<number>(),
+
+  // 质量评估报告
+  qualityReport: Annotation<QualityReport | null>({
+    reducer: (_, update) => update ?? _,
+    default: () => null,
+  }),
 
   // 运行状态（支持并行分支写入，如 architect + database 并发）
   currentStep: Annotation<string>({

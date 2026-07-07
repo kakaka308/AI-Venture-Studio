@@ -7,7 +7,9 @@ import { databaseAgentNode } from "./agents/databaseAgent";
 import { planningAgentNode } from "./agents/planningAgent";
 import { riskAgentNode } from "./agents/riskAgent";
 import { reviewerAgentNode } from "./agents/reviewerAgent";
+import { evaluationAgentNode } from "./agents/evaluationAgent";
 import { wrapAgentWithObservability } from "@/lib/observability/wrap-agent";
+import type { QualityReport } from "./evaluation/types";
 
 /**
  * 构建 Multi-Agent Workflow 图
@@ -18,14 +20,18 @@ import { wrapAgentWithObservability } from "@/lib/observability/wrap-agent";
  *                                              ┌─────────────────┤
  *                                          pass│              fail│
  *                                              ↓                 ↓
- *                                        summarize           back to
+ *                                          evaluate           back to
  *                                              ↓            target agent
- *                                            END            (max 2 retries)
+ *                                          summarize        (max 2 retries)
+ *                                              ↓
+ *                                            END
  *
  * 关键特性：
  *   1. architect 和 database 并行执行（Send API）
  *   2. reviewer 质量审查 + 条件路由回退
- *   3. Agent 间通过 agentMessages 通信
+ *   3. evaluate 逐 Agent 可衡量评分（确定性+LLM 双轨）
+ *   4. summarize 汇总报告 + 质量评分卡
+ *   5. Agent 间通过 agentMessages 通信
  */
 export function buildWorkflow(traceId?: string, conversationId?: string) {
   const opts = { traceId: traceId || "workflow", conversationId };
@@ -53,6 +59,9 @@ export function buildWorkflow(traceId?: string, conversationId?: string) {
     .addNode("reviewer", traceId
       ? wrapAgentWithObservability(reviewerAgentNode, "reviewer", opts)
       : reviewerAgentNode)
+    .addNode("evaluate", traceId
+      ? wrapAgentWithObservability(evaluationAgentNode, "evaluate", opts)
+      : evaluationAgentNode)
     .addNode("summarize", traceId
       ? wrapAgentWithObservability(summarizeNode, "summarize", opts)
       : summarizeNode)
@@ -72,8 +81,9 @@ export function buildWorkflow(traceId?: string, conversationId?: string) {
     .addEdge("planning", "risk")
     .addEdge("risk", "reviewer")
 
-    // --- 条件路由：reviewer 决定通过 or 回退 ---
+    // --- 条件路由：reviewer → evaluate(pass) / revisionTarget(fail) ---
     .addConditionalEdges("reviewer", reviewerRouter)
+    .addEdge("evaluate", "summarize")
     .addEdge("summarize", END)
 
     .compile();
@@ -95,16 +105,16 @@ function fanOutArchitectDatabase(state: typeof WorkflowState.State) {
 
 /**
  * reviewer 完成后：
- *   - 通过 → summarize（输出最终报告）
+ *   - 通过 → evaluate（质量评估评分卡）
  *   - 不通过 + 未达上限 → 回退到 revisionTarget Agent 重新生成
- *   - 不通过但已达上限 → 强制进入 summarize
+ *   - 不通过但已达上限 → 强制进入 evaluate
  */
 function reviewerRouter(state: typeof WorkflowState.State) {
   if (state.needsRevision && state.revisionCount < 3) {
     const target = state.revisionTarget || "pm";
     return target; // 回退到指定 Agent
   }
-  return "summarize";
+  return "evaluate";
 }
 
 // ============================================================
@@ -121,6 +131,7 @@ async function summarizeNode(state: typeof WorkflowState.State) {
     riskAssessment,
     agentMessages,
     revisionCount,
+    qualityReport,
   } = state;
 
   const revisionNote =
@@ -132,6 +143,9 @@ async function summarizeNode(state: typeof WorkflowState.State) {
   const communicationLog = (agentMessages || [])
     .map((m) => `- **[${m.from} → ${m.to}]** (${m.type}): ${m.content}`)
     .join("\n");
+
+  // ---- 质量评分卡 ----
+  const scorecard = buildScorecard(qualityReport);
 
   const summary = `
 # 项目分析报告
@@ -156,6 +170,8 @@ ${riskAssessment || "暂无数据"}
 
 ---
 
+${scorecard}
+
 ## Agent 协作日志
 ${communicationLog || "无"}
 `;
@@ -164,4 +180,33 @@ ${communicationLog || "无"}
     finalResult: summary,
     currentStep: "completed",
   };
+}
+
+// ---- 评分卡构建 ----
+
+function buildScorecard(report: QualityReport | null): string {
+  if (!report) return "## 质量评分卡\n\n> 暂无评分数据。\n";
+
+  const { market, pm, overall } = report;
+
+  const overallEmoji = overall >= 85 ? "🟢" : overall >= 70 ? "🟡" : "🔴";
+
+  return `
+## 质量评分卡
+
+### 综合评分: ${overall}/100 ${overallEmoji}
+
+| Agent | 维度 | 分数 | 类型 |
+|-------|------|------|------|
+| **Market Agent** | 完整度 | ${market.completeness}/100 | 确定性 |
+| | 准确度 | ${market.accuracy}/100 | LLM 语义 |
+| | 引用数量 | ${market.citationCount} 条 | 确定性 |
+| | **Market 总分** | **${market.overall}/100** | |
+| **PM Agent** | 完整度 | ${pm.completeness}/100 | 确定性 |
+| | PRD 质量 | ${pm.prdQuality}/100 | LLM 语义 |
+| | 需求覆盖率 | ${pm.requirementCoverage}/100 | 混合 |
+| | **PM 总分** | **${pm.overall}/100** | |
+
+> 💡 **评分说明**：确定性指标通过程序计算（可复现），LLM 语义指标通过 AI 评审。引用数量反映报告的可靠性和可验证性。
+`;
 }

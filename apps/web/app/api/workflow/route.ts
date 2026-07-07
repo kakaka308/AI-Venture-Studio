@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { PrismaClient } from "@ai-venture/db";
+import type { Prisma } from "@ai-venture/db";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { runWorkflow } from "@/lib/workflow/runner";
 import { observabilityBus } from "@/lib/observability/event-bus";
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
     async start(controller) {
       const encoder = new TextEncoder();
       let finalResult = ""; // 收集 summarize 节点的最终报告
+      let qualityReport: Record<string, unknown> | null = null; // 收集 evaluate 节点的质量评分
       const allAgentOutputs: Record<string, string> = {}; // 收集所有 Agent 的输出
       try {
         for await (const event of stream) {
@@ -84,6 +86,13 @@ export async function POST(req: NextRequest) {
                 ) {
                   allAgentOutputs[key] = val as string;
                 }
+              }
+              // 捕获 evaluate 节点的质量评估报告
+              if (output.qualityReport) {
+                console.log(
+                  `[Workflow] 📊 捕获质量评估报告`,
+                );
+                qualityReport = output.qualityReport as Record<string, unknown>;
               }
             }
           }
@@ -185,6 +194,31 @@ export async function POST(req: NextRequest) {
                     (err) => console.error("[Workflow] 情景回写失败:", err),
                   );
                 }
+
+                // ---- 质量评分持久化 ----
+                if (qualityReport) {
+                  saveQualityReport(
+                    prisma,
+                    projectId,
+                    conversationId,
+                    traceId,
+                    qualityReport,
+                  ).catch((err) =>
+                    console.error("[Workflow] 质量评分保存失败:", err),
+                  );
+                }
+              }
+
+              // ---- 发送质量评分卡 SSE 事件 ----
+              if (qualityReport) {
+                const qualityEvent = JSON.stringify({
+                  event: "workflow_quality",
+                  data: { qualityReport },
+                });
+                controller.enqueue(
+                  encoder.encode(`data: ${qualityEvent}\n\n`),
+                );
+                console.log(`[Workflow] 📊 发送 workflow_quality 事件`);
               }
             } catch (saveErr) {
               console.error("[Workflow] 保存报告失败:", saveErr);
@@ -283,4 +317,67 @@ function buildFallbackReport(outputs: Record<string, string>): string {
   }
 
   return report;
+}
+
+/**
+ * 将质量评估报告持久化到 AgentEvaluation 表
+ */
+async function saveQualityReport(
+  prisma: PrismaClient,
+  projectId: string,
+  conversationId: string | undefined,
+  runId: string,
+  qualityReport: Record<string, unknown>,
+) {
+  const entries: Array<{
+    agent: string;
+    metrics: Prisma.InputJsonValue;
+    score: number;
+  }> = [];
+
+  // Market Agent
+  const market = qualityReport.market as Record<string, unknown> | undefined;
+  if (market) {
+    entries.push({
+      agent: "market",
+      metrics: {
+        completeness: market.completeness,
+        accuracy: market.accuracy,
+        citationCount: market.citationCount,
+      } as Prisma.InputJsonValue,
+      score: (market.overall as number) || 0,
+    });
+  }
+
+  // PM Agent
+  const pm = qualityReport.pm as Record<string, unknown> | undefined;
+  if (pm) {
+    entries.push({
+      agent: "pm",
+      metrics: {
+        completeness: pm.completeness,
+        prdQuality: pm.prdQuality,
+        requirementCoverage: pm.requirementCoverage,
+        citationCount: pm.citationCount,
+      } as Prisma.InputJsonValue,
+      score: (pm.overall as number) || 0,
+    });
+  }
+
+  if (entries.length === 0) return;
+
+  await prisma.agentEvaluation.createMany({
+    data: entries.map((e) => ({
+      projectId,
+      conversationId: conversationId || null,
+      runId,
+      agent: e.agent,
+      metrics: e.metrics,
+      score: e.score,
+    })),
+  });
+
+  console.log(
+    `[Workflow] 💾 质量评分已保存: ${entries.map((e) => `${e.agent}=${e.score}/100`).join(", ")}`,
+  );
 }

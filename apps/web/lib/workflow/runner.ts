@@ -30,6 +30,8 @@ export async function runWorkflow(input: RunWorkflowOptions) {
     revisionTarget: "",
     revisionNotes: "",
     revisionCount: 0,
+    // 质量评估
+    qualityReport: null,
     // 运行状态
     currentStep: "start",
     errors: [],

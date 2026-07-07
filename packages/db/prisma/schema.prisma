@@ -82,6 +82,9 @@ model Project {
 
   // 项目知识库（一对多）
   knowledgeDocuments KnowledgeDocument[]
+
+  // 质量评估（一对多）
+  agentEvaluations AgentEvaluation[]
 }
 
 model ProjectContext {
@@ -205,5 +208,26 @@ model KnowledgeChunk {
   
   @@index([documentId])
   @@map("knowledge_chunks")
+}
+
+// ---------------------------------------------------------------------------
+//  AgentEvaluation - Agent 质量评估记录（支撑趋势分析 + 历史对比）
+// ---------------------------------------------------------------------------
+model AgentEvaluation {
+  id             String   @id @default(cuid())
+  projectId      String
+  conversationId String?
+  runId          String   // workflow traceId
+  agent          String   // market | pm | architect | database | planning | risk
+  metrics        Json     // 完整指标 JSON
+  score          Float    // 该 Agent 0-100 总分
+  createdAt      DateTime @default(now())
+
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([runId])
+  @@index([agent])
+  @@map("agent_evaluations")
 }
 
