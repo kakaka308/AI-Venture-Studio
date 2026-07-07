@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { UIMessage } from "ai";
 import type { Components } from "react-markdown";
 import {
@@ -149,6 +150,21 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
       >
         {children}
       </a>
+    ),
+    table: ({ children }) => (
+      <div className="overflow-x-auto my-3">
+        <table className="min-w-full border-collapse border border-gray-300 dark:border-gray-600 text-sm">
+          {children}
+        </table>
+      </div>
+    ),
+    th: ({ children }) => (
+      <th className="border border-gray-300 dark:border-gray-600 px-3 py-1.5 bg-gray-100 dark:bg-gray-700 font-semibold text-left">
+        {children}
+      </th>
+    ),
+    td: ({ children }) => (
+      <td className="border border-gray-300 dark:border-gray-600 px-3 py-1.5">{children}</td>
     ),
   };
 
@@ -322,7 +338,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
                 )}
               </div>
             )}
-            <ReactMarkdown components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
               {textContent}
             </ReactMarkdown>
           </div>

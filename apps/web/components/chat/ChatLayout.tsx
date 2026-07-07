@@ -11,6 +11,13 @@ import ChatInput from "./ChatInput";
 import WorkflowReportCard from "./WorkflowReportCard";
 import { useObservability } from "@/lib/observability/useObservability";
 
+/** 原始消息结构（来自 Prisma / API） */
+interface RawMessage {
+  id: string;
+  role: string;
+  content: string;
+}
+
 /** Agent 中文名称映射 */
 const AGENT_LABELS: Record<string, string> = {
   market: "市场分析",
@@ -152,6 +159,7 @@ export default function ChatLayout() {
         body: JSON.stringify({
           userInput: `请对项目 "${projectName || projectId?.slice(0, 8)}" 进行完整的 Multi-Agent 分析`,
           projectId,
+          conversationId: conversationIdRef.current,
         }),
         signal: abort.signal,
       });
@@ -307,6 +315,18 @@ export default function ChatLayout() {
     };
   }, []);
 
+  /** 从消息列表中提取已保存的工作流报告（useCallback 保证引用稳定） */
+  const extractAndSetReport = useCallback((allMessages: RawMessage[]) => {
+    const reportMsg = allMessages
+      .filter((m) => m.role === "workflow_report")
+      .pop();
+    if (reportMsg?.content) {
+      setWorkflowResultContent(reportMsg.content);
+    } else {
+      setWorkflowResultContent(null);
+    }
+  }, []);
+
   // 可观测性 WebSocket 连接
   const {
     currentTrace,
@@ -358,7 +378,10 @@ export default function ChatLayout() {
           const msgRes = await fetch(`/api/conversations/${data[0].id}`);
           if (msgRes.ok) {
             const msgData = await msgRes.json();
-            setMessages(msgData.messages || []);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const allMessages = (msgData.messages || []) as any[];
+            extractAndSetReport(allMessages);
+            setMessages(allMessages.filter((m) => m.role !== "workflow_report"));
           }
         } else {
           // No conversations yet — create one so the user can start typing
@@ -381,9 +404,7 @@ export default function ChatLayout() {
       }
     };
     init();
-    // Run once on mount — setMessages is stable from useChat
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [extractAndSetReport, setMessages]);
 
   // --- Select a conversation ---
   const selectConversation = useCallback(
@@ -393,13 +414,16 @@ export default function ChatLayout() {
         const res = await fetch(`/api/conversations/${id}`);
         if (res.ok) {
           const data = await res.json();
-          setMessages(data.messages || []);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const allMessages = (data.messages || []) as any[];
+          extractAndSetReport(allMessages);
+          setMessages(allMessages.filter((m) => m.role !== "workflow_report"));
         }
       } catch (err) {
         console.error("Failed to load messages:", err);
       }
     },
-    [setMessages]
+    [extractAndSetReport, setMessages]
   );
 
   // --- Create new conversation ---
@@ -584,7 +608,7 @@ export default function ChatLayout() {
               />
               {/* Multi-Agent 分析报告：workflow 完成后始终显示 */}
               {workflowResultContent && !workflowRunning ? (
-                <WorkflowReportCard content={workflowResultContent} />
+                <WorkflowReportCard content={workflowResultContent} projectName={projectName || undefined} />
               ) : workflowResultContent && workflowRunning ? (
                 <div className="max-w-3xl mx-auto px-4 py-4 text-center text-sm text-gray-400">
                   分析报告已生成，正在渲染...

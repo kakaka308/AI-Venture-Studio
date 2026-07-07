@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const { userInput, projectId } = await req.json();
+  const { userInput, projectId, conversationId } = await req.json();
 
   // 读取项目上下文
   const project = await prisma.project.findFirst({
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       }
     : {};
 
-  // 生成可观测性追踪 ID
+  const userId = session.user.id; // 提前捕获，避免回调作用域内 TS 报未定义
   const traceId = `workflow_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const workflowStartTime = Date.now();
 
@@ -145,6 +145,28 @@ export async function POST(req: NextRequest) {
             data: { content: finalResult },
           });
           controller.enqueue(encoder.encode(`data: ${resultEvent}\n\n`));
+
+          // 持久化报告：保存到数据库，刷新页面后仍可查看
+          if (conversationId) {
+            try {
+              // 验证对话归属
+              const conv = await prisma.conversation.findFirst({
+                where: { id: conversationId, userId },
+              });
+              if (conv) {
+                await prisma.message.create({
+                  data: {
+                    content: finalResult,
+                    role: "workflow_report",
+                    conversationId: conversationId,
+                  },
+                });
+                console.log(`[Workflow] 💾 报告已保存到对话 ${conversationId}`);
+              }
+            } catch (saveErr) {
+              console.error("[Workflow] 保存报告失败:", saveErr);
+            }
+          }
         } else {
           console.warn(
             `[Workflow] ⚠️ 无法构建最终报告 - 所有 Agent 输出均为空`
