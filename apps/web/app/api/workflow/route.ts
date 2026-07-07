@@ -4,6 +4,7 @@ import { PrismaClient } from "@ai-venture/db";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { runWorkflow } from "@/lib/workflow/runner";
 import { observabilityBus } from "@/lib/observability/event-bus";
+import { extractAndSaveMemory, extractAndUpdateContext } from "@/lib/memory/extractMemory";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
@@ -162,6 +163,28 @@ export async function POST(req: NextRequest) {
                   },
                 });
                 console.log(`[Workflow] 💾 报告已保存到对话 ${conversationId}`);
+              }
+
+              // ---- Workflow 后处理：自动回写长期记忆和情景文件 ----
+              if (projectId) {
+                // 合并所有 Agent 产出 + 最终报告，作为抽取素材
+                const allOutputsText = [
+                  ...Object.values(allAgentOutputs),
+                  finalResult,
+                ]
+                  .filter(Boolean)
+                  .join("\n\n---\n\n");
+
+                if (allOutputsText.length > 50) {
+                  // 回写到 ProjectMemory（长期记忆/画像）
+                  extractAndSaveMemory(prisma, projectId, allOutputsText, 'workflow').catch(
+                    (err) => console.error("[Workflow] 记忆回写失败:", err),
+                  );
+                  // 回写到 ProjectContext（情景文件：问题/价值/竞品/阶段）
+                  extractAndUpdateContext(prisma, projectId, allOutputsText).catch(
+                    (err) => console.error("[Workflow] 情景回写失败:", err),
+                  );
+                }
               }
             } catch (saveErr) {
               console.error("[Workflow] 保存报告失败:", saveErr);

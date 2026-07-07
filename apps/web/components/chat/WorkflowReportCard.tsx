@@ -3,7 +3,10 @@
 import { useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 import type { Components } from "react-markdown";
+import MermaidRenderer from "./MermaidRenderer";
+import { preprocessMarkdown } from "@/lib/markdown/preprocess";
 
 interface WorkflowReportCardProps {
   content: string;
@@ -11,10 +14,12 @@ interface WorkflowReportCardProps {
   projectName?: string;
   /** 滚动定位锚点 ID，用于导航侧边栏点击跳转 */
   scrollTargetId?: string;
+  /** 初始折叠状态：true=折叠，false=展开。默认 false（展开） */
+  defaultCollapsed?: boolean;
 }
 
-export default function WorkflowReportCard({ content, projectName, scrollTargetId }: WorkflowReportCardProps) {
-  const [collapsed, setCollapsed] = useState(false);
+export default function WorkflowReportCard({ content, projectName, scrollTargetId, defaultCollapsed = false }: WorkflowReportCardProps) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
 
@@ -91,6 +96,12 @@ export default function WorkflowReportCard({ content, projectName, scrollTargetI
             {children}
           </code>
         );
+      }
+      // 检测 mermaid 代码块 → 使用 MermaidRenderer 渲染
+      const language = className?.replace("language-", "") ?? "";
+      const codeStr = String(children).replace(/\n$/, "");
+      if (language === "mermaid") {
+        return <MermaidRenderer code={codeStr} />;
       }
       return (
         <pre className="mt-2 mb-2 p-3 rounded-lg bg-gray-800 dark:bg-gray-900 text-gray-100 text-xs overflow-x-auto font-mono">
@@ -215,8 +226,8 @@ export default function WorkflowReportCard({ content, projectName, scrollTargetI
           {/* 报告正文 */}
           {!collapsed && (
             <div className="px-4 py-3 text-sm text-gray-800 dark:text-gray-200 leading-relaxed">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {content}
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents}>
+                {preprocessMarkdown(content)}
               </ReactMarkdown>
             </div>
           )}

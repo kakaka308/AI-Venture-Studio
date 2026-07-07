@@ -133,7 +133,10 @@ export default function ChatLayout() {
     Record<string, { status: string; duration?: number; tokens?: number }>
   >({});
   const [workflowResultContent, setWorkflowResultContent] = useState<string | null>(null);
+  const [reportDefaultCollapsed, setReportDefaultCollapsed] = useState(true); // 历史报告默认折叠
   const workflowAbortRef = useRef<AbortController | null>(null);
+  // 前端侧追踪每个节点的开始时间，用于计算真实的步骤耗时
+  const nodeStartTimesRef = useRef<Record<string, number>>({});
 
   // --- 从消息列表中提取导航项（用户问题 + 报告） ---
   const navItems = useMemo<NavItem[]>(() => {
@@ -192,6 +195,7 @@ export default function ChatLayout() {
     });
     setWorkflowProgress(init);
     setWorkflowResultContent(null); // 清空上一次的结果
+    setReportDefaultCollapsed(true); // 重置为新报告模式
     setWorkflowRunning(true);
 
     try {
@@ -250,6 +254,7 @@ export default function ChatLayout() {
               if (content) {
                 console.log("[ChatLayout] ✅ 设置 Multi-Agent 分析报告, 长度:", content.length);
                 setWorkflowResultContent(content);
+                setReportDefaultCollapsed(false); // 刚生成的报告默认展开
               } else {
                 console.warn("[ChatLayout] ⚠️ workflow_result 事件中 content 为空");
               }
@@ -278,6 +283,8 @@ export default function ChatLayout() {
 
             // Agent 开始
             if (eventName.includes("start") || eventName === "on_chain_start") {
+              // 前端侧记录节点开始时间，用于计算真实耗时
+              nodeStartTimesRef.current[nodeName] = Date.now();
               setWorkflowProgress((prev) => ({
                 ...prev,
                 [nodeName]: { status: "running" },
@@ -286,11 +293,13 @@ export default function ChatLayout() {
 
             // Agent 完成
             if (eventName.includes("end") || eventName === "on_chain_end") {
+              const startTime = nodeStartTimesRef.current[nodeName];
+              const nodeDuration = startTime ? Date.now() - startTime : undefined;
               setWorkflowProgress((prev) => ({
                 ...prev,
                 [nodeName]: {
                   status: "success",
-                  duration: event.data?.duration,
+                  duration: event.data?.duration ?? nodeDuration,
                   tokens: event.data?.tokens,
                 },
               }));
@@ -364,6 +373,7 @@ export default function ChatLayout() {
       .pop();
     if (reportMsg?.content) {
       setWorkflowResultContent(reportMsg.content);
+      setReportDefaultCollapsed(true); // 历史加载的报告默认折叠
     } else {
       setWorkflowResultContent(null);
     }
@@ -658,6 +668,7 @@ export default function ChatLayout() {
                   content={workflowResultContent}
                   projectName={projectName || undefined}
                   scrollTargetId="workflow-report"
+                  defaultCollapsed={reportDefaultCollapsed}
                 />
               ) : workflowResultContent && workflowRunning ? (
                 <div className="max-w-3xl mx-auto px-4 py-4 text-center text-sm text-gray-400">

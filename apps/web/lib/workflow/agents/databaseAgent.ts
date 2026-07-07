@@ -38,10 +38,18 @@ ${relevantMessages ? `\n其他 Agent 的提示：\n${relevantMessages}` : ""}
 
 请从以下维度输出数据库设计文档：
 
-1. **ER 图设计（文字描述）**
+1. **ER 图设计（Mermaid 格式）**
    - 列出所有核心实体
    - 描述实体之间的关系（一对一、一对多、多对多）
-   - 用文字绘制 ER 关系图
+   - **必须**使用 Mermaid erDiagram 语法绘制 ER 关系图，代码块标记为 \`\`\`mermaid
+   - 示例格式：
+     \`\`\`mermaid
+     erDiagram
+       USER ||--o{ ORDER : places
+       ORDER ||--|{ ORDER_ITEM : contains
+       PRODUCT ||--o{ ORDER_ITEM : "ordered in"
+     \`\`\`
+   - 请确保实体名和关系清晰，注明主键/外键字段（作为注释写在实体属性中）
 
 2. **数据模型设计**
    - 每个表的完整字段定义（字段名、类型、约束、默认值）

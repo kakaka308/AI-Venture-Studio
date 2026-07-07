@@ -23,6 +23,7 @@ import { createTask } from "@/lib/tools/createTask";
 import { searchKnowledgeBase } from "@/lib/tools/searchKnowledgeBase";
 import { observabilityBus } from "@/lib/observability/event-bus";
 import { wrapToolWithObservability } from "@/lib/observability/wrap-tool";
+import { extractAndSaveMemory } from "@/lib/memory/extractMemory";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
@@ -178,6 +179,12 @@ export async function POST(req: NextRequest) {
   systemPrompt += `
 你是 AI Venture Studio 的创业助手。
 
+【强制记忆更新 - 最重要规则】
+每次对话结束时，你**必须**调用 saveProjectMemory 工具，将本轮对话中学到的新信息保存到长期记忆中。
+即使你认为没有新信息，也请尝试提炼至少一个关键洞察或项目理解。
+覆盖的字段：industry（行业）、targetUsers（目标用户）、businessModel（商业模式）、keyInsights（关键洞察）、summary（项目摘要）。
+只填有实质信息的字段，不要编造。
+
 【知识库搜索工具使用指南】
 当用户询问需要外部知识的问题时，使用 searchKnowledgeBase 工具搜索知识库。
 
@@ -229,7 +236,7 @@ export async function POST(req: NextRequest) {
         createTask: wrapToolWithObservability(createTask(prisma), "createTask", { traceId, conversationId }),
         searchKnowledgeBase: wrapToolWithObservability(searchKnowledgeBase(prisma), "searchKnowledgeBase", { traceId, conversationId }),
       },
-      stopWhen: stepCountIs(3),
+      stopWhen: stepCountIs(5),
       onFinish: async ({ text, usage }) => {
         console.log("[Chat API] 模型返回完成，响应长度:", text?.length);
         const totalDuration = Date.now() - chatStartTime;
@@ -267,6 +274,13 @@ export async function POST(req: NextRequest) {
           }).then(() => {
             console.log("[Memory] ✓ AI 回复已推送到短期记忆");
           }).catch((err) => console.error("[Memory] 推送 AI 回复失败:", err));
+
+          // ---- 长期记忆：后处理强制抽取（兜底机制，即使 LLM 忘记调工具也会执行） ----
+          if (projectId && text) {
+            extractAndSaveMemory(prisma, projectId, text, 'chat').catch((err) =>
+              console.error("[Memory] 后处理记忆抽取失败:", err),
+            );
+          }
         } catch (err) {
           console.error("Failed to persist assistant message:", err);
         }

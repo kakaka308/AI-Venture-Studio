@@ -3,8 +3,11 @@
 import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 import type { UIMessage } from "ai";
 import type { Components } from "react-markdown";
+import MermaidRenderer from "./MermaidRenderer";
+import { preprocessMarkdown } from "@/lib/markdown/preprocess";
 import {
   Wrench,
   Search,
@@ -128,6 +131,12 @@ export default function MessageBubble({ message, scrollTargetId }: MessageBubble
             {children}
           </code>
         );
+      }
+      // 检测 mermaid 代码块 → 使用 MermaidRenderer 渲染
+      const language = className?.replace("language-", "") ?? "";
+      const codeStr = String(children).replace(/\n$/, "");
+      if (language === "mermaid") {
+        return <MermaidRenderer code={codeStr} />;
       }
       return (
         <pre className="mt-2 mb-2 p-3 rounded-lg bg-gray-800 dark:bg-gray-900 text-gray-100 text-xs overflow-x-auto font-mono">
@@ -341,8 +350,8 @@ export default function MessageBubble({ message, scrollTargetId }: MessageBubble
                 )}
               </div>
             )}
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-              {textContent}
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents}>
+              {preprocessMarkdown(textContent)}
             </ReactMarkdown>
           </div>
         ) : null}

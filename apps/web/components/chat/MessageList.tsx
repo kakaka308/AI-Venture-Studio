@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useMemo } from "react";
+import { useEffect, useRef, useMemo, useState } from "react";
 import type { UIMessage } from "ai";
 import MessageBubble from "./MessageBubble";
 import ObservabilityPanel from "./ObservabilityPanel";
@@ -73,7 +73,20 @@ export default function MessageList({
 
   // 统计
   const completedCount = pipelineSteps.filter((s) => s.status === "success").length;
-  const totalDuration = pipelineSteps.reduce((sum, s) => sum + (s.duration || 0), 0);
+
+  // 实时流逝计时器（独立于 Agent 上报的 duration）
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const startTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!workflowRunning) return;
+
+    startTimeRef.current = Date.now();
+    const timer = setInterval(() => {
+      setElapsedMs(Date.now() - startTimeRef.current);
+    }, 100);
+    return () => clearInterval(timer);
+  }, [workflowRunning]);
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
@@ -111,7 +124,7 @@ export default function MessageList({
                 </div>
                 <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
                   <span>{completedCount}/{PIPELINE.length} 完成</span>
-                  <span>⏱ {(totalDuration / 1000).toFixed(1)}s</span>
+                  <span>⏱ {(elapsedMs / 1000).toFixed(1)}s</span>
                 </div>
               </div>
 
