@@ -105,8 +105,6 @@ ${relevantMessages ? `\n其他 Agent 的提示：\n${relevantMessages}` : ""}
     return {
       riskAssessment: result.content as string,
       currentStep: "risk_done",
-      needsRevision: false,
-      revisionNotes: "",
       agentMessages: [
         ...(agentMessages || []),
         {

@@ -68,8 +68,6 @@ ${relevantMessages ? `\n其他 Agent 的提示：\n${relevantMessages}` : ""}
   return {
     taskPlan: result.content as string,
     currentStep: "planning_done",
-    needsRevision: false,
-    revisionNotes: "",
     agentMessages: [
       ...(agentMessages || []),
       {

@@ -84,6 +84,39 @@ export const PM_SECTIONS = [
   "MVP",
 ];
 
+export const ARCHITECT_SECTIONS = [
+  "系统架构",
+  "技术栈",
+  "数据库设计",
+  "API 设计",
+  "部署",
+  "技术风险",
+];
+
+export const DATABASE_SECTIONS = [
+  "ER 图",
+  "数据模型",
+  "索引",
+  "分库分表",
+  "数据迁移",
+];
+
+export const PLANNING_SECTIONS = [
+  "里程碑",
+  "任务",
+  "工时",
+  "依赖",
+  "风险",
+];
+
+export const RISK_SECTIONS = [
+  "技术风险",
+  "商业风险",
+  "运营风险",
+  "风险矩阵",
+  "应对策略",
+];
+
 // ---- 需求覆盖率 ==============================================
 // 统计 marketReport 中识别的机会/痛点，对比 PRD 中是否被功能覆盖
 

@@ -187,7 +187,12 @@ ${communicationLog || "无"}
 function buildScorecard(report: QualityReport | null): string {
   if (!report) return "## 质量评分卡\n\n> 暂无评分数据。\n";
 
-  const { market, pm, overall } = report;
+  const { market, pm, architect, database, planning, risk, overall } = report;
+
+  // 空值保护：任一核心 Agent 评分缺失时降级提示，避免 undefined 访问崩溃
+  if (!market || !pm || !architect || !database || !planning || !risk) {
+    return "## 质量评分卡\n\n> 评分数据不完整，无法渲染。\n";
+  }
 
   const overallEmoji = overall >= 85 ? "🟢" : overall >= 70 ? "🟡" : "🔴";
 
@@ -206,6 +211,22 @@ function buildScorecard(report: QualityReport | null): string {
 | | PRD 质量 | ${pm.prdQuality}/100 | LLM 语义 |
 | | 需求覆盖率 | ${pm.requirementCoverage}/100 | 混合 |
 | | **PM 总分** | **${pm.overall}/100** | |
+| **Architect Agent** | 完整度 | ${architect.completeness}/100 | 确定性 |
+| | 可行性 | ${architect.feasibility}/100 | LLM 语义 |
+| | 技术风险评估 | ${architect.techRisk}/100 | LLM 语义 |
+| | **架构总分** | **${architect.overall}/100** | |
+| **Database Agent** | 完整度 | ${database.completeness}/100 | 确定性 |
+| | 设计规范化 | ${database.normalization}/100 | LLM 语义 |
+| | 引用数量 | ${database.citationCount} 条 | 确定性 |
+| | **数据库总分** | **${database.overall}/100** | |
+| **Planning Agent** | 完整度 | ${planning.completeness}/100 | 确定性 |
+| | 可落地性 | ${planning.executability}/100 | LLM 语义 |
+| | 工时估算 | ${planning.estimation}/100 | LLM 语义 |
+| | **计划总分** | **${planning.overall}/100** | |
+| **Risk Agent** | 完整度 | ${risk.completeness}/100 | 确定性 |
+| | 风险覆盖度 | ${risk.coverage}/100 | LLM 语义 |
+| | 引用数量 | ${risk.citationCount} 条 | 确定性 |
+| | **风险总分** | **${risk.overall}/100** | |
 
 > 💡 **评分说明**：确定性指标通过程序计算（可复现），LLM 语义指标通过 AI 评审。引用数量反映报告的可靠性和可验证性。
 `;

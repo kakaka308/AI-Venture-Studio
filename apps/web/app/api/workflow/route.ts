@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   observabilityBus.emitEvent({
     type: "workflow:start",
     traceId,
-    conversationId: projectId,
+    conversationId,
     timestamp: workflowStartTime,
     model: "qwen3.6-flash",
     runtime: "通义千问 DashScope / Qwen3.6-Flash · Node.js · Multi-Agent",
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     userInput,
     projectContext,
     traceId,
-    conversationId: projectId,
+    conversationId,
   });
 
   // 用 ReadableStream 包装，实现 SSE
@@ -235,7 +235,7 @@ export async function POST(req: NextRequest) {
         observabilityBus.emitEvent({
           type: "workflow:end",
           traceId,
-          conversationId: projectId,
+          conversationId,
           timestamp: Date.now(),
           totalDuration,
           model: "qwen3.6-flash",
@@ -260,7 +260,7 @@ export async function POST(req: NextRequest) {
         observabilityBus.emitEvent({
           type: "workflow:end",
           traceId,
-          conversationId: projectId,
+          conversationId,
           timestamp: Date.now(),
           totalDuration,
           model: "qwen3.6-flash",
@@ -361,6 +361,64 @@ async function saveQualityReport(
         citationCount: pm.citationCount,
       } as Prisma.InputJsonValue,
       score: (pm.overall as number) || 0,
+    });
+  }
+
+  // Architect Agent
+  const architect = qualityReport.architect as Record<string, unknown> | undefined;
+  if (architect) {
+    entries.push({
+      agent: "architect",
+      metrics: {
+        completeness: architect.completeness,
+        feasibility: architect.feasibility,
+        techRisk: architect.techRisk,
+        citationCount: architect.citationCount,
+      } as Prisma.InputJsonValue,
+      score: (architect.overall as number) || 0,
+    });
+  }
+
+  // Database Agent
+  const database = qualityReport.database as Record<string, unknown> | undefined;
+  if (database) {
+    entries.push({
+      agent: "database",
+      metrics: {
+        completeness: database.completeness,
+        normalization: database.normalization,
+        citationCount: database.citationCount,
+      } as Prisma.InputJsonValue,
+      score: (database.overall as number) || 0,
+    });
+  }
+
+  // Planning Agent
+  const planning = qualityReport.planning as Record<string, unknown> | undefined;
+  if (planning) {
+    entries.push({
+      agent: "planning",
+      metrics: {
+        completeness: planning.completeness,
+        executability: planning.executability,
+        estimation: planning.estimation,
+        citationCount: planning.citationCount,
+      } as Prisma.InputJsonValue,
+      score: (planning.overall as number) || 0,
+    });
+  }
+
+  // Risk Agent
+  const risk = qualityReport.risk as Record<string, unknown> | undefined;
+  if (risk) {
+    entries.push({
+      agent: "risk",
+      metrics: {
+        completeness: risk.completeness,
+        coverage: risk.coverage,
+        citationCount: risk.citationCount,
+      } as Prisma.InputJsonValue,
+      score: (risk.overall as number) || 0,
     });
   }
 

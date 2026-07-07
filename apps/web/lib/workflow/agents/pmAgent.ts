@@ -52,8 +52,6 @@ ${relevantMessages ? `\n其他 Agent 的提示：\n${relevantMessages}` : ""}
   return {
     productRequirements: result.content as string,
     currentStep: "pm_done",
-    needsRevision: false,
-    revisionNotes: "",
     agentMessages: [
       ...(agentMessages || []),
       {
