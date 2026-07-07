@@ -9,6 +9,7 @@ import ConversationList, { type Conversation } from "./ConversationList";
 import MessageList from "./MessageList";
 import ChatInput from "./ChatInput";
 import WorkflowReportCard from "./WorkflowReportCard";
+import ChatNavSidebar, { type NavItem } from "./ChatNavSidebar";
 import { useObservability } from "@/lib/observability/useObservability";
 
 /** 原始消息结构（来自 Prisma / API） */
@@ -35,6 +36,7 @@ export default function ChatLayout() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [navSidebarCollapsed, setNavSidebarCollapsed] = useState(true);
   const [conversationsLoading, setConversationsLoading] = useState(true);
   const [input, setInput] = useState("");
   const conversationIdRef = useRef<string | null>(null);
@@ -132,6 +134,46 @@ export default function ChatLayout() {
   >({});
   const [workflowResultContent, setWorkflowResultContent] = useState<string | null>(null);
   const workflowAbortRef = useRef<AbortController | null>(null);
+
+  // --- 从消息列表中提取导航项（用户问题 + 报告） ---
+  const navItems = useMemo<NavItem[]>(() => {
+    const items: NavItem[] = [];
+    for (const msg of messages) {
+      if (msg.role !== "user") continue;
+      // 从 parts 或 content 中提取文本作为标签
+      let label = "";
+      if ("parts" in msg && Array.isArray(msg.parts)) {
+        label = msg.parts
+          .filter((p) => p.type === "text")
+          .map((p) => (p as { text: string }).text)
+          .join("")
+          .trim();
+      } else {
+        label = ((msg as unknown as { content?: string }).content ?? "").trim();
+      }
+      items.push({
+        id: `msg-${msg.id}`,
+        label: label.slice(0, 50) || "问题",
+        type: "question",
+      });
+    }
+    if (workflowResultContent) {
+      items.push({
+        id: "workflow-report",
+        label: "Multi-Agent 分析报告",
+        type: "report",
+      });
+    }
+    return items;
+  }, [messages, workflowResultContent]);
+
+  // --- 点击导航项时滚动到对应位置 ---
+  const handleNavNavigate = useCallback((id: string) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, []);
 
   /**
    * 启动 Multi-Agent 工作流
@@ -573,8 +615,12 @@ export default function ChatLayout() {
           </h1>
         </header>
 
-        {/* Messages */}
-        <div ref={chatContainerRef} className="flex-1 overflow-y-auto">
+        {/* Messages area with nav sidebar */}
+        <div className="flex-1 relative overflow-hidden">
+          <div
+            ref={chatContainerRef}
+            className="h-full overflow-y-auto"
+          >
           {messages.length === 0 && !workflowResultContent ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-gray-600 px-4">
               <svg
@@ -608,7 +654,11 @@ export default function ChatLayout() {
               />
               {/* Multi-Agent 分析报告：workflow 完成后始终显示 */}
               {workflowResultContent && !workflowRunning ? (
-                <WorkflowReportCard content={workflowResultContent} projectName={projectName || undefined} />
+                <WorkflowReportCard
+                  content={workflowResultContent}
+                  projectName={projectName || undefined}
+                  scrollTargetId="workflow-report"
+                />
               ) : workflowResultContent && workflowRunning ? (
                 <div className="max-w-3xl mx-auto px-4 py-4 text-center text-sm text-gray-400">
                   分析报告已生成，正在渲染...
@@ -616,6 +666,15 @@ export default function ChatLayout() {
               ) : null}
             </div>
           )}
+          </div>
+
+          {/* 页面导航侧边栏 */}
+          <ChatNavSidebar
+            items={navItems}
+            collapsed={navSidebarCollapsed}
+            onToggle={() => setNavSidebarCollapsed((v) => !v)}
+            onNavigate={handleNavNavigate}
+          />
         </div>
 
         {/* Error */}

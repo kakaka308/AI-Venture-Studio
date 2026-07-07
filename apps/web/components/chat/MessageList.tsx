@@ -83,6 +83,7 @@ export default function MessageList({
           <MessageBubble
             key={message.id}
             message={message}
+            scrollTargetId={message.role === "user" ? `msg-${message.id}` : undefined}
           />
         ))}
 

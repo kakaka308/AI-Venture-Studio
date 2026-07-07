@@ -19,6 +19,8 @@ import {
 
 interface MessageBubbleProps {
   message: UIMessage | { id?: string; role: string; content: string };
+  /** 滚动定位锚点 ID，用于导航侧边栏点击跳转 */
+  scrollTargetId?: string;
 }
 
 // 中文工具名映射
@@ -37,7 +39,7 @@ const TOOL_LUCIDE_ICONS: Record<string, React.ComponentType<{ className?: string
   searchKnowledgeBase: Search,
 };
 
-export default function MessageBubble({ message }: MessageBubbleProps) {
+export default function MessageBubble({ message, scrollTargetId }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const [toolsExpanded, setToolsExpanded] = useState(false);
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
@@ -231,6 +233,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
 
   return (
     <div
+      id={scrollTargetId}
       className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}
     >
       {/* 头像 - AI 助手 */}

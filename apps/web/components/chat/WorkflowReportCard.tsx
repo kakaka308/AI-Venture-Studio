@@ -9,9 +9,11 @@ interface WorkflowReportCardProps {
   content: string;
   /** 项目名称，用于 PDF 标题 */
   projectName?: string;
+  /** 滚动定位锚点 ID，用于导航侧边栏点击跳转 */
+  scrollTargetId?: string;
 }
 
-export default function WorkflowReportCard({ content, projectName }: WorkflowReportCardProps) {
+export default function WorkflowReportCard({ content, projectName, scrollTargetId }: WorkflowReportCardProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
@@ -125,7 +127,7 @@ export default function WorkflowReportCard({ content, projectName }: WorkflowRep
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-4">
+    <div id={scrollTargetId} className="max-w-3xl mx-auto px-4 py-4">
       <div className="flex gap-3 items-start">
         {/* 头像 */}
         <div className="w-8 h-8 rounded-full bg-linear-to-br from-green-500 to-teal-600 flex items-center justify-center shrink-0">
